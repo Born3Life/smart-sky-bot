@@ -3,4 +3,4 @@ from .profile import router as profile_router
 from .start import router as start_router
 from .weather import router as weather_router
 
-routers = [start_router, profile_router, city_router, weather_router]
+routers = [start_router, profile_router, weather_router, city_router]
