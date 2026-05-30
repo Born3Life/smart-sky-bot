@@ -4,6 +4,7 @@ import asyncio
 import logging
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Generator
 
@@ -158,3 +159,46 @@ async def update_city_async(
 ) -> None:
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, update_city, user_id, city, lat, lon)
+
+
+def _activate_trial(user_id: int) -> bool:
+    """Activate 7-day trial. Returns True if trial was just activated."""
+    with tx() as c:
+        row = c.execute(
+            "SELECT is_premium, premium_until FROM users WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        if row["is_premium"] and row["premium_until"]:
+            try:
+                until = datetime.fromisoformat(row["premium_until"])
+                if datetime.utcnow() < until:
+                    return False  # already active premium
+            except (ValueError, TypeError):
+                pass
+        until = (datetime.utcnow() + timedelta(days=7)).isoformat()
+        c.execute(
+            "UPDATE users SET is_premium = 1, premium_until = ? WHERE user_id = ?",
+            (until, user_id),
+        )
+        return True
+
+
+def _set_premium(user_id: int, days: int) -> None:
+    until = (datetime.utcnow() + timedelta(days=days)).isoformat()
+    with tx() as c:
+        c.execute(
+            "UPDATE users SET is_premium = 1, premium_until = ? WHERE user_id = ?",
+            (until, user_id),
+        )
+
+
+async def activate_trial_async(user_id: int) -> bool:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _activate_trial, user_id)
+
+
+async def set_premium_async(user_id: int, days: int) -> None:
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, _set_premium, user_id, days)

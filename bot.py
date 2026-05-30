@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from config import bot_token, telegram_proxy
 from database import init_db_async
 from handlers import routers
+from middleware.premium import PremiumMiddleware
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -53,6 +54,7 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher()
+    dp.message.middleware(PremiumMiddleware())
 
     for router in routers:
         dp.include_router(router)
