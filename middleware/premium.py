@@ -17,6 +17,7 @@ PREMIUM_FEATURES = [
     "/ai_tip",
     "/notifications",
     "📅 7 дней",
+    "☀️ UV-индекс",
 ]
 
 
@@ -58,7 +59,7 @@ class PremiumMiddleware(BaseMiddleware):
             await event.answer(
                 "💎 Это премиум-функция.\n\n"
                 "Оформи подписку — /subscribe\n"
-                "Пробный период 7 дней бесплатно!",
+                "Пробный период 2 дня бесплатно!",
             )
             return
 

@@ -5,7 +5,7 @@ import logging
 from aiogram import F, Router, types
 from aiogram.filters import Command, StateFilter
 
-from database import get_user_async
+from database import check_ai_limit_async, get_user_async, increment_ai_usage_async
 from keyboards.main import main_keyboard
 from services.ai_recommendations import ai_tip
 from services.recommendation import fmt_windows
@@ -264,6 +264,15 @@ async def handle_ai_tip(message: types.Message) -> None:
         await message.answer("🏙 Сначала укажи город.")
         return
 
+    allowed, remaining = await check_ai_limit_async(user.id)
+    if not allowed:
+        await message.answer(
+            "🤖 <b>Лимит бесплатных AI-советов на сегодня исчерпан</b>\n\n"
+            "Получи неограниченные советы с Premium:\n"
+            "💎 /subscribe — 50⭐/мес, пробный период 2 дня",
+        )
+        return
+
     weather = fetch_by_city(city)
     if weather is None:
         await message.answer("❌ Нет данных о погоде.")
@@ -275,6 +284,8 @@ async def handle_ai_tip(message: types.Message) -> None:
         tip = ai_tip(info["has_children"], info["workplace"], weather, city, user_id=user.id)
     else:
         tip = ai_tip(info["has_children"], info["workplace"], weather, city)
+
+    await increment_ai_usage_async(user.id)
 
     dn = fetch_day_night(city)
     dn_line = fmt_day_night(dn, "today")
@@ -292,6 +303,9 @@ async def handle_ai_tip(message: types.Message) -> None:
     if tip:
         output.append("")
         output.append(tip)
+        if remaining <= 1:
+            output.append("")
+            output.append("💡 Бесплатных советов больше нет. <a href='/subscribe'>Оформи Premium</a>")
     elif windows:
         output.append("")
         output.append("💡 По данным прогноза — планируй день с учётом окон.")

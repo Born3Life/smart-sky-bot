@@ -89,6 +89,21 @@ def init_db() -> None:
         c.execute("CREATE INDEX IF NOT EXISTS idx_msg_user ON message_history(user_id, created_at)")
         logger.info("database ready at %s", DB_PATH)
     _migrate_add_columns()
+    _init_morning_briefing()
+
+
+def _init_morning_briefing() -> None:
+    conn().execute("""
+        CREATE TABLE IF NOT EXISTS morning_briefing (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(user_id, date),
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        )
+    """)
+    conn().commit()
 
 
 def _migrate_add_columns() -> None:
@@ -96,6 +111,8 @@ def _migrate_add_columns() -> None:
     for col, col_type in [
         ("workplace", "TEXT DEFAULT ''"),
         ("has_children", "INTEGER DEFAULT 0"),
+        ("ai_requests_today", "INTEGER DEFAULT 0"),
+        ("ai_request_date", "TEXT"),
     ]:
         try:
             with tx() as c:
@@ -293,3 +310,87 @@ async def add_message_async(user_id: int, role: str, text: str) -> None:
 async def get_history_async(user_id: int, limit: int = 300) -> list[dict[str, str]]:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, get_history, user_id, limit)
+
+
+# ── AI usage limit ──
+
+def reset_ai_usage(user_id: int) -> None:
+    with tx() as c:
+        c.execute(
+            "UPDATE users SET ai_requests_today = 0, ai_request_date = NULL WHERE user_id = ?",
+            (user_id,),
+        )
+
+
+def check_ai_limit(user_id: int, max_free: int = 2) -> tuple[bool, int]:
+    """Return (allowed, remaining_today)."""
+    with tx() as c:
+        row = c.execute(
+            "SELECT is_premium, ai_requests_today, ai_request_date FROM users WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+    if row is None:
+        return False, 0
+    if row["is_premium"]:
+        return True, 999
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    stored_date = row["ai_request_date"]
+    used = row["ai_requests_today"] if stored_date == today else 0
+    remaining = max_free - used
+    return remaining > 0, max(remaining, 0)
+
+
+def increment_ai_usage(user_id: int) -> None:
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    with tx() as c:
+        row = c.execute(
+            "SELECT ai_requests_today, ai_request_date FROM users WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        used = row["ai_requests_today"] if row and row["ai_request_date"] == today else 0
+        c.execute(
+            "UPDATE users SET ai_requests_today = ?, ai_request_date = ? WHERE user_id = ?",
+            (used + 1, today, user_id),
+        )
+
+
+async def check_ai_limit_async(user_id: int, max_free: int = 2) -> tuple[bool, int]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, check_ai_limit, user_id, max_free)
+
+
+async def increment_ai_usage_async(user_id: int) -> None:
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, increment_ai_usage, user_id)
+
+
+# ── Morning briefing ──
+
+
+def was_briefing_sent_today(user_id: int) -> bool:
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    row = conn().execute(
+        "SELECT 1 FROM morning_briefing WHERE user_id = ? AND date = ?",
+        (user_id, today),
+    ).fetchone()
+    return row is not None
+
+
+def mark_briefing_sent(user_id: int) -> None:
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    conn().execute(
+        "INSERT OR IGNORE INTO morning_briefing (user_id, date) VALUES (?, ?)",
+        (user_id, today),
+    )
+    conn().commit()
+
+
+
+async def was_briefing_sent_today_async(user_id: int) -> bool:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, was_briefing_sent_today, user_id)
+
+
+async def mark_briefing_sent_async(user_id: int) -> None:
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, mark_briefing_sent, user_id)

@@ -58,14 +58,14 @@ async def handle_subscribe(message: types.Message) -> None:
         "— 🔔 Ежедневные уведомления\n"
         "— 📍 Несколько городов\n\n"
         "💰 <b>50 ⭐ Telegram Stars / месяц</b>\n\n"
-        "Попробуй 7 дней бесплатно! 👇"
+        "Попробуй 2 дня бесплатно! 👇"
     )
 
     kb = types.InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 types.InlineKeyboardButton(
-                    text="🎁 7 дней бесплатно",
+                    text="🎁 2 дня бесплатно",
                     callback_data="trial",
                 ),
             ],
@@ -90,7 +90,7 @@ async def handle_trial(callback: types.CallbackQuery) -> None:
     if activated:
         await callback.message.edit_text(
             "🎁 <b>Пробный период активирован!</b>\n\n"
-            "7 дней Premium бесплатно.\n"
+            "2 дня Premium бесплатно.\n"
             "Наслаждайся всеми функциями! 🌤",
         )
     else:

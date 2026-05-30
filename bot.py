@@ -20,7 +20,7 @@ from database import init_db_async
 from handlers import routers
 from middleware.onboarding import OnboardingMiddleware
 from middleware.premium import PremiumMiddleware
-from services.weather_monitor import _init_cache_table, check_and_notify
+from services.weather_monitor import _init_cache_table, check_and_notify, morning_briefing
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -47,6 +47,7 @@ async def _weather_monitor_loop(bot: Bot) -> None:
     await asyncio.sleep(1800)
     while True:
         try:
+            await morning_briefing(bot)
             await check_and_notify(bot)
             logger.info("weather monitor cycle done")
         except Exception:
