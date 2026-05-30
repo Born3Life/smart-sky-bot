@@ -5,7 +5,7 @@ import logging
 from aiogram import F, Router, types
 from aiogram.filters import StateFilter
 
-from database import update_city_async
+from database import get_user, update_city_async
 from keyboards.main import main_keyboard
 from weather import fetch_by_city
 
@@ -51,6 +51,14 @@ async def handle_city_or_weather(message: types.Message) -> None:
     text = message.text.strip()
 
     if text in _BUTTONS:
+        return
+
+    # Don't auto-save city if user has no city yet (needs /start onboarding)
+    db_user = get_user(user.id)
+    if db_user is None or not db_user.get("city"):
+        await message.answer(
+            "👋 Напиши /start, чтобы зарегистрироваться и указать город.",
+        )
         return
 
     weather = fetch_by_city(text)
