@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from models import WeatherData
 from services.gismeteo import gismeteo_url
+from services.weather_forecast import fetch_day_night, fmt_day_night
 from utils import celsius_to_symbol, fmt_float, wind_description
 
 
 def fmt_weather(weather: WeatherData) -> str:
     temp_symbol = celsius_to_symbol(weather.temperature)
     wind_desc = wind_description(weather.wind_speed)
+
+    dn = fetch_day_night(weather.city_name)
+    dn_line = fmt_day_night(dn, "today")
 
     lines = [
         f"🌤 <b>Погода в {weather.city_name}</b>",
@@ -20,6 +24,9 @@ def fmt_weather(weather: WeatherData) -> str:
 
     if weather.wind_gust is not None:
         lines.append(f"🌬 Порывы до: {fmt_float(weather.wind_gust, ' м/с')}")
+
+    if dn_line:
+        lines.append(dn_line)
 
     lines.append(f"📊 Давление: {weather.pressure} гПа")
     lines.append(f"☁️ Облачность: {weather.clouds}%")

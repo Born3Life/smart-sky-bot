@@ -9,7 +9,12 @@ from database import get_user_async
 from keyboards.main import main_keyboard
 from services.ai_recommendations import ai_tip
 from services.recommendation import fmt_windows
-from services.weather_forecast import fetch_forecast, fmt_forecast
+from services.weather_forecast import (
+    fetch_day_night,
+    fetch_forecast,
+    fmt_day_night,
+    fmt_forecast,
+)
 from services.weather_text import fmt_weather
 from services.web_search import weather_search
 from weather import fetch_by_city, fetch_by_coords, ts_to_time
@@ -102,6 +107,9 @@ async def handle_today_mini(message: types.Message) -> None:
         await message.answer("❌ Нет данных.")
         return
 
+    dn = fetch_day_night(city)
+    dn_line = fmt_day_night(dn, "today")
+
     lines = [
         f"📅 <b>Сегодня, {city}</b>",
         "",
@@ -109,6 +117,8 @@ async def handle_today_mini(message: types.Message) -> None:
         f"💧 {weather.humidity}%  💨 {weather.wind_speed} м/с",
         f"📝 {weather.description.capitalize()}",
     ]
+    if dn_line:
+        lines.append(dn_line)
     if weather.uvi is not None:
         lines.append(f"☀️ UV-индекс: {weather.uvi}")
     if weather.sunrise:
@@ -143,11 +153,14 @@ async def handle_tomorrow(message: types.Message) -> None:
         return
 
     f = forecast[1]
+    dn = fetch_day_night(city)
+    dn_line = fmt_day_night(dn, "tomorrow")
     await message.answer(
         f"📅 <b>Завтра, {f['date']}</b>\n"
         f"🌡 {f['temp']}°C (ощущается {f['feels_like']}°C)\n"
         f"💧 {f['humidity']}%  💨 {f['wind']} м/с\n"
-        f"📝 {f['desc'].capitalize()}"
+        f"📝 {f['desc'].capitalize()}\n"
+        f"{dn_line}"
     )
     await message.answer("Выбери действие:", reply_markup=main_keyboard())
 
@@ -171,7 +184,7 @@ async def handle_forecast(message: types.Message) -> None:
         await sent.edit_text("❌ Нет данных.")
         return
 
-    await sent.edit_text(fmt_forecast(forecast))
+    await sent.edit_text(fmt_forecast(forecast, city))
     await message.answer("Выбери действие:", reply_markup=main_keyboard())
 
 
@@ -263,10 +276,16 @@ async def handle_ai_tip(message: types.Message) -> None:
     else:
         tip = ai_tip(info["has_children"], info["workplace"], weather, city)
 
+    dn = fetch_day_night(city)
+    dn_line = fmt_day_night(dn, "today")
+
     output = [
         f"🤖 <b>AI-рекомендация</b>\n"
         f"🏙 {city} | {weather.description.capitalize()}, {weather.temperature}°C",
     ]
+    if dn_line:
+        output.append("")
+        output.append(dn_line)
     if windows:
         output.append("")
         output.append(windows)

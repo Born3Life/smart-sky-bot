@@ -220,7 +220,7 @@ def _activate_trial(user_id: int) -> bool:
                     return False  # already active premium
             except (ValueError, TypeError):
                 pass
-        until = (datetime.utcnow() + timedelta(days=7)).isoformat()
+        until = (datetime.utcnow() + timedelta(days=2)).isoformat()
         c.execute(
             "UPDATE users SET is_premium = 1, premium_until = ? WHERE user_id = ?",
             (until, user_id),
