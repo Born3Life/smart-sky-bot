@@ -27,6 +27,7 @@ _BUTTONS = {
     "🏙 Город",
     "💎 Премиум",
     "🔙 Назад",
+    "🔍 Поиск",
     "/start",
     "/subscribe",
     "/subscribe@smart_sky_bot",

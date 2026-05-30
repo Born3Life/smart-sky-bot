@@ -25,6 +25,9 @@ def main_keyboard() -> ReplyKeyboardMarkup:
                 KeyboardButton(text="🏙 Город"),
                 KeyboardButton(text="💎 Премиум"),
             ],
+            [
+                KeyboardButton(text="🔍 Поиск"),
+            ],
         ],
         resize_keyboard=True,
     )

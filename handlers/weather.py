@@ -11,6 +11,7 @@ from services.ai_recommendations import ai_tip
 from services.recommendation import get_recommendations
 from services.weather_forecast import fetch_forecast, fmt_forecast
 from services.weather_text import fmt_weather
+from services.web_search import weather_search
 from weather import fetch_by_city, fetch_by_coords, ts_to_time
 
 logger = logging.getLogger(__name__)
@@ -45,8 +46,19 @@ async def _weather_or_prompt(
     recs = get_recommendations(profile, weather, city)
     rec_lines = "\n".join(f"• {r}" for r in recs)
 
+    web_results = weather_search(city)
+    web_lines = ""
+    if web_results:
+        web_lines = "\n🔍 <b>Из интернета:</b>\n" + "\n".join(
+            f"• {r['title']}: {r['snippet'][:120]}"
+            for r in web_results
+            if r.get("snippet")
+        )
+
     await sent.edit_text(
-        f"{weather_block}\n\n👤 <b>Рекомендации для «{profile}»:</b>\n{rec_lines}"
+        f"{weather_block}"
+        f"\n\n👤 <b>Рекомендации для «{profile}»:</b>\n{rec_lines}"
+        f"{web_lines}"
     )
     await message.answer("Выбери действие:", reply_markup=main_keyboard())
 
@@ -249,6 +261,41 @@ async def handle_ai_tip(message: types.Message) -> None:
         )
     else:
         await sent.edit_text("❌ Не удалось получить AI-рекомендацию. Попробуй позже.")
+
+
+@router.message(F.text == "🔍 Поиск", StateFilter(None))
+async def handle_search(message: types.Message) -> None:
+    user = message.from_user
+    if user is None:
+        return
+
+    city, _ = await _get_city_profile(user.id)
+    if not city:
+        await message.answer("🏙 Сначала укажи город.")
+        return
+
+    sent = await message.answer(f"🔍 Ищу «погода {city}»...")
+    results = weather_search(city)
+
+    if not results:
+        await sent.edit_text("❌ Ничего не найдено.")
+        return
+
+    lines = [f"🔍 <b>Результаты поиска: {city}</b>\n"]
+    for r in results:
+        title = r.get("title", "")
+        snippet = r.get("snippet", "")
+        link = r.get("link", "")
+        lines.append(f"▫️ <b>{title}</b>")
+        if snippet:
+            lines.append(f"   {snippet[:200]}")
+        if link and not link.startswith("http"):
+            link = ""
+        if link:
+            lines.append(f"   🔗 {link}")
+
+    await sent.edit_text("\n".join(lines))
+    await message.answer("Выбери действие:", reply_markup=main_keyboard())
 
 
 @router.message(F.location, StateFilter(None))

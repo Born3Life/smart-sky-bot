@@ -18,6 +18,7 @@ from config import bot_token, telegram_proxy
 from database import init_db_async
 from handlers import routers
 from middleware.premium import PremiumMiddleware
+from services.weather_monitor import _init_cache_table, check_and_notify
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -38,6 +39,17 @@ async def _health_server(port: int) -> None:
     await site.start()
     logger.info("health server on port %d", port)
     await asyncio.Event().wait()
+
+
+async def _weather_monitor_loop(bot: Bot) -> None:
+    await asyncio.sleep(1800)  # first check after 30 min
+    while True:
+        try:
+            await check_and_notify(bot)
+            logger.info("weather monitor cycle done")
+        except Exception:
+            logger.exception("weather monitor error")
+        await asyncio.sleep(3600)  # every hour
 
 
 async def main() -> None:
@@ -61,6 +73,8 @@ async def main() -> None:
         dp.include_router(router)
 
     await init_db_async()
+    _init_cache_table()
+    asyncio.create_task(_weather_monitor_loop(bot))
     logger.info("SmartSkyBot started")
     await dp.start_polling(bot, polling_timeout=1)
 
