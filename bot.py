@@ -12,7 +12,7 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiohttp import web
-from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
+from aiogram.exceptions import TelegramConflictError, TelegramNetworkError, TelegramRetryAfter
 from dotenv import load_dotenv
 
 from config import bot_token, telegram_proxy
@@ -79,9 +79,14 @@ async def main() -> None:
     asyncio.create_task(_weather_monitor_loop(bot))
     logger.info("SmartSkyBot started")
 
+    await bot.delete_webhook(drop_pending_updates=True)
+
     while True:
         try:
             await dp.start_polling(bot, polling_timeout=1)
+        except TelegramConflictError as e:
+            logger.warning("Conflict — another bot instance is running: %s — retry in 30s", e)
+            await asyncio.sleep(30)
         except (TelegramNetworkError, TelegramRetryAfter) as e:
             logger.warning("Telegram connection error: %s — retry in 10s", e)
             await asyncio.sleep(10)
