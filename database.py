@@ -5,6 +5,7 @@ import logging
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Generator
 
@@ -200,7 +201,7 @@ def update_profile_fields(user_id: int, **fields: str | int) -> None:
 
 async def update_profile_fields_async(user_id: int, **fields: str | int) -> None:
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, update_profile_fields, user_id, **fields)
+    await loop.run_in_executor(None, partial(update_profile_fields, user_id, **fields))
 
 
 def _activate_trial(user_id: int) -> bool:
