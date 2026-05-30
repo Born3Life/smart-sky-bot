@@ -47,19 +47,9 @@ async def _weather_or_prompt(
     recs = get_recommendations(profile, weather, city)
     rec_lines = "\n".join(f"• {r}" for r in recs)
 
-    web_results = weather_search(city)
-    web_lines = ""
-    if web_results:
-        web_lines = "\n🔍 <b>Из интернета:</b>\n" + "\n".join(
-            f"• {r['title']}: {r['snippet'][:120]}"
-            for r in web_results
-            if r.get("snippet")
-        )
-
     await sent.edit_text(
         f"{weather_block}"
         f"\n\n👤 <b>Рекомендации для «{profile}»:</b>\n{rec_lines}"
-        f"{web_lines}"
     )
     await message.answer("Выбери действие:", reply_markup=main_keyboard())
 
@@ -278,35 +268,18 @@ async def handle_ai_tip(message: types.Message) -> None:
     tip = ai_tip(profile, weather)
     if tip:
         await sent.edit_text(
-            f"🤖 <b>AI-рекомендации для «{profile}»</b>\n\n"
-            f"🏙 {city} | {weather.description.capitalize()}\n"
-            f"🌡 {weather.temperature}°C\n\n"
+            f"🤖 <b>Рекомендации для «{profile}»</b>\n\n"
+            f"🏙 {city} | {weather.description.capitalize()}, {weather.temperature}°C\n\n"
             f"{tip}"
         )
         return
 
-    # Fallback: profile recommendations + web search
     recs = get_recommendations(profile, weather, city)
     rec_lines = "\n".join(f"• {r}" for r in recs)
-    web_results = weather_search(city)
-    web_lines = ""
-    if web_results:
-        snippets = []
-        for r in web_results[:2]:
-            snip = r.get("snippet", "")
-            if snip:
-                snippets.append(f"• {snip[:150]}")
-        if snippets:
-            web_lines = "\n\n🔍 <b>Из интернета:</b>\n" + "\n".join(snippets)
-
     await sent.edit_text(
         f"🤖 <b>Рекомендации для «{profile}»</b>\n\n"
-        f"🏙 {city} | {weather.description.capitalize()}\n"
-        f"🌡 {weather.temperature}°C\n\n"
-        f"<b>Советы:</b>\n{rec_lines}"
-        f"{web_lines}"
-        "\n\n💡 AI-рекомендации временно недоступны, "
-        "использованы профильные советы + поиск."
+        f"🏙 {city} | {weather.description.capitalize()}, {weather.temperature}°C\n\n"
+        f"{rec_lines}"
     )
 
 
@@ -365,7 +338,7 @@ async def handle_location(message: types.Message) -> None:
     if p:
         profile = p
 
-    recs = get_recommendations(profile, weather, city)
+    recs = get_recommendations(profile, weather, weather.city_name if weather else city)
     rec_lines = "\n".join(f"• {r}" for r in recs)
 
     rec_text = f"\n\n👤 <b>Рекомендации для «{profile}»:</b>\n{rec_lines}"
