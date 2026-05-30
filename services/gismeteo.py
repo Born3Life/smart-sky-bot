@@ -229,3 +229,12 @@ def fetch_today_hourly(city: str) -> list[dict[str, Any]] | None:
         })
 
     return entries if entries else None
+
+
+def gismeteo_url(city: str) -> str | None:
+    """Return Gismeteo URL for a city if known."""
+    entry = _CITIES.get(city.lower().strip())
+    if entry:
+        slug, cid = entry
+        return f"{_BASE}/weather-{slug}-{cid}/now/"
+    return None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from models import WeatherData
+from services.gismeteo import gismeteo_url
 from utils import celsius_to_symbol, fmt_float, wind_description
 
 
@@ -32,4 +33,9 @@ def fmt_weather(weather: WeatherData) -> str:
         lines.append(f"🌫 Видимость: {fmt_float(weather.visibility / 1000, ' км')}")
 
     lines.append(f"📝 {weather.description.capitalize()}")
+
+    g_url = gismeteo_url(weather.city_name)
+    if g_url:
+        lines.append(f"\n🌐 <a href='{g_url}'>Gismeteo</a>")
+
     return "\n".join(lines)
