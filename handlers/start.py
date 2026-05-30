@@ -4,10 +4,11 @@ import logging
 
 from aiogram import Router, types
 from aiogram.filters import Command
-from aiogram.utils.markdown import hbold
+from aiogram.fsm.context import FSMContext
 
 from database import get_user_async, upsert_user_async
-from keyboards.main import main_keyboard, profile_keyboard
+from keyboards.main import main_keyboard
+from models.states import Onboarding
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,8 @@ router = Router()
 
 
 @router.message(Command("start"))
-async def handle_start(message: types.Message) -> None:
+async def handle_start(message: types.Message, state: FSMContext) -> None:
+    await state.clear()
     user = message.from_user
     if user is None:
         return
@@ -23,20 +25,35 @@ async def handle_start(message: types.Message) -> None:
     created = await upsert_user_async(user.id, user.username, user.full_name or "")
 
     if created:
+        await state.set_state(Onboarding.waiting_name)
         await message.answer(
-            f"Привет, {hbold(user.full_name)}! 🌤\n\n"
-            "Я SmartSkyBot — персональный погодный помощник.\n"
-            "Сначала выбери, кто ты:",
-            reply_markup=profile_keyboard(),
+            "👋 <b>Привет! Я SmartSkyBot</b> — твой персональный\n"
+            "погодный помощник 🌤\n\n"
+            "Я знаю погоду в любом городе мира, даю советы по погоде\n"
+            "под твой профиль и помогаю планировать день.\n\n"
+            "Для начала давай познакомимся!\n\n"
+            "<b>Как тебя зовут?</b>",
         )
-    else:
-        info = await get_user_async(user.id)
-        profile = info.get("profile_type", "Обычный") if info else "Обычный"
-        city = info.get("city", "не указан") if info else "не указан"
+        return
+
+    info = await get_user_async(user.id)
+    profile = info.get("profile_type", "Обычный") if info else "Обычный"
+    city = info.get("city") if info else None
+    fallback = user.full_name or ""
+    name = info.get("full_name", fallback) if info else fallback
+
+    if city:
         await message.answer(
-            f"С возвращением, {hbold(user.full_name)}! 🌤\n\n"
+            f"С возвращением, {name}! 🌤\n\n"
             f"👤 Профиль: {profile}\n"
             f"🏙 Город: {city}\n\n"
-            "Нажми «🌤 Погода», чтобы узнать прогноз!",
+            "Нажми «🌤 Сейчас», чтобы узнать погоду!",
             reply_markup=main_keyboard(),
+        )
+    else:
+        await state.set_state(Onboarding.waiting_city)
+        await message.answer(
+            f"С возвращением, {name}!\n\n"
+            "У тебя ещё не указан город.\n"
+            "Напиши название (например: Москва, Лондон):",
         )

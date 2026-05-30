@@ -13,10 +13,11 @@ logger = logging.getLogger(__name__)
 
 
 PREMIUM_FEATURES = [
-    "/subscribe",
     "/forecast",
     "/ai_tip",
     "/notifications",
+    "📅 7 дней",
+    "🤖 AI Совет",
 ]
 
 

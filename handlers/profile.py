@@ -3,23 +3,29 @@ from __future__ import annotations
 import logging
 
 from aiogram import F, Router, types
+from aiogram.filters import StateFilter
 
 from database import get_user_async, update_profile_async
 from keyboards.main import main_keyboard
-from models import PROFILES
+from models import PROFILE_BUTTONS
 
 logger = logging.getLogger(__name__)
 
 router = Router()
 
 
-@router.message(F.text.in_(PROFILES))
+@router.message(F.text == "🔙 Назад", StateFilter(None))
+async def handle_back(message: types.Message) -> None:
+    await message.answer("Главное меню:", reply_markup=main_keyboard())
+
+
+@router.message(F.text.in_(list(PROFILE_BUTTONS)), StateFilter(None))
 async def handle_profile_selection(message: types.Message) -> None:
     user = message.from_user
     if user is None or not message.text:
         return
 
-    profile = message.text.strip()
+    profile = PROFILE_BUTTONS[message.text.strip()]
     await update_profile_async(user.id, profile)
 
     info = await get_user_async(user.id)
@@ -29,7 +35,7 @@ async def handle_profile_selection(message: types.Message) -> None:
         await message.answer(
             f"✅ Профиль: <b>{profile}</b>\n"
             f"🏙 Город: {city}\n\n"
-            "Нажми «🌤 Погода» для прогноза!",
+            "Нажми «🌤 Сейчас» для прогноза!",
             reply_markup=main_keyboard(),
         )
     else:
@@ -55,5 +61,5 @@ async def handle_show_profile(message: types.Message) -> None:
     await message.answer(
         f"👤 <b>Твой профиль:</b> {profile}\n\n"
         "Чтобы сменить — просто напиши название нового профиля:\n"
-        "Строитель, Водитель, Родитель, Дачник, Рыбак, Обычный",
+        "Строитель, Водитель, Родитель, Дачник, Рыбак, Обычный, Спортсмен, Аллергик",
     )

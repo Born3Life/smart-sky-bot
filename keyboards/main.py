@@ -6,10 +6,24 @@ from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 def main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🌤 Погода")],
+            [KeyboardButton(text="🌤 Сейчас")],
+            [
+                KeyboardButton(text="📅 Сегодня"),
+                KeyboardButton(text="📅 Завтра"),
+                KeyboardButton(text="📅 7 дней"),
+            ],
+            [
+                KeyboardButton(text="🌅 Рассвет"),
+                KeyboardButton(text="☀️ UV-индекс"),
+                KeyboardButton(text="🤖 AI Совет"),
+            ],
+            [
+                KeyboardButton(text="📍 Погода здесь", request_location=True),
+            ],
             [
                 KeyboardButton(text="👤 Профиль"),
-                KeyboardButton(text="🏙 Изменить город"),
+                KeyboardButton(text="🏙 Город"),
+                KeyboardButton(text="💎 Премиум"),
             ],
         ],
         resize_keyboard=True,
@@ -25,6 +39,9 @@ def profile_keyboard() -> ReplyKeyboardMarkup:
             [KeyboardButton(text="🌱 Дачник")],
             [KeyboardButton(text="🎣 Рыбак")],
             [KeyboardButton(text="👤 Обычный")],
+            [KeyboardButton(text="🏃 Спортсмен")],
+            [KeyboardButton(text="🤧 Аллергик")],
+            [KeyboardButton(text="🔙 Назад")],
         ],
         resize_keyboard=True,
         one_time_keyboard=True,

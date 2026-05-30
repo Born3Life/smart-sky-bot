@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from models import WeatherData
 
+from .weather_forecast import fetch_raw_forecast, fmt_precipitation
+
 
 def _builder(w: WeatherData) -> list[str]:
     tips: list[str] = []
@@ -100,6 +102,38 @@ def _default(w: WeatherData) -> list[str]:
     return tips
 
 
+def _sports(w: WeatherData) -> list[str]:
+    tips: list[str] = []
+    if w.temperature > 28:
+        tips.append("🥵 Жара — перенеси тренировку на утро/вечер")
+    elif w.temperature < -10:
+        tips.append("🥶 Мороз — короткая тренировка, тёплая одежда")
+    if w.wind_speed > 8:
+        tips.append("💨 Сильный ветер — вело/бег будут тяжёлыми")
+    if w.rain_1h and w.rain_1h > 0:
+        tips.append("🌧 Дождь — скользко, выбери крытый зал")
+    if w.humidity > 85:
+        tips.append("💧 Высокая влажность — тяжело дышать, снизь темп")
+    if not tips:
+        tips.append("✅ Отличная погода для тренировки!")
+    return tips
+
+
+def _allergy(w: WeatherData) -> list[str]:
+    tips: list[str] = []
+    if w.temperature > 20 and w.humidity > 60:
+        tips.append("🌿 Высокий риск пыльцы — закрой окна, прими антигистамин")
+    if w.wind_speed > 5:
+        tips.append("💨 Ветер разносит пыльцу — надень маску на улице")
+    if w.rain_1h and w.rain_1h > 1:
+        tips.append("🌧 Дождь прибивает пыльцу — хороший день для прогулки")
+    if w.humidity > 80:
+        tips.append("💧 Сырость — риск плесени, проветривай")
+    if not tips:
+        tips.append("✅ Низкий риск аллергии")
+    return tips
+
+
 _RECOMMENDATIONS = {
     "Строитель": _builder,
     "Водитель": _driver,
@@ -107,9 +141,24 @@ _RECOMMENDATIONS = {
     "Дачник": _gardener,
     "Рыбак": _fisher,
     "Обычный": _default,
+    "Спортсмен": _sports,
+    "Аллергик": _allergy,
 }
 
 
-def get_recommendations(profile: str, weather: WeatherData) -> list[str]:
+def get_recommendations(
+    profile: str,
+    weather: WeatherData,
+    city: str | None = None,
+) -> list[str]:
     func = _RECOMMENDATIONS.get(profile, _default)
-    return func(weather)
+    tips = func(weather)
+
+    if city:
+        forecast = fetch_raw_forecast(city)
+        if forecast:
+            precip = fmt_precipitation(forecast)
+            if precip:
+                tips.insert(0, precip)
+
+    return tips

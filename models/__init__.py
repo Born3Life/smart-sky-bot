@@ -39,13 +39,20 @@ class WeatherData:
     visibility: int
     city_name: str
     country: str
+    sunrise: int | None = None
+    sunset: int | None = None
+    uvi: float | None = None
 
 
-PROFILES: list[str] = [
-    "Строитель",
-    "Водитель",
-    "Родитель",
-    "Дачник",
-    "Рыбак",
-    "Обычный",
-]
+PROFILE_BUTTONS: dict[str, str] = {
+    "👷 Строитель": "Строитель",
+    "🚗 Водитель": "Водитель",
+    "👨‍👩‍👧‍👦 Родитель": "Родитель",
+    "🌱 Дачник": "Дачник",
+    "🎣 Рыбак": "Рыбак",
+    "👤 Обычный": "Обычный",
+    "🏃 Спортсмен": "Спортсмен",
+    "🤧 Аллергик": "Аллергик",
+}
+
+PROFILES: list[str] = list(PROFILE_BUTTONS.values())
