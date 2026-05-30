@@ -28,6 +28,7 @@ _BUTTONS = {
     "💎 Премиум",
     "🔙 Назад",
     "🔍 Поиск",
+    "✏️ Изменить профиль",
     "/start",
     "/subscribe",
     "/subscribe@smart_sky_bot",

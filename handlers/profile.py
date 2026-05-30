@@ -80,6 +80,13 @@ PROFILE_EDIT_FIELDS: list[tuple[str, str, str]] = [
 ]
 
 
+@router.message(F.text == "✏️ Изменить профиль", StateFilter(None))
+async def handle_edit_profile(message: types.Message, state: FSMContext) -> None:
+    await state.set_state(EditProfile.waiting_field)
+    await state.update_data(field="full_name")
+    await message.answer("Напиши своё имя:")
+
+
 @router.message(F.text == "👤 Профиль", StateFilter(None))
 async def handle_show_profile(message: types.Message) -> None:
     user = message.from_user

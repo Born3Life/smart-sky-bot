@@ -5,7 +5,7 @@ import logging
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 
-from database import update_city_async, update_profile_async
+from database import update_city_async, update_profile_async, update_profile_fields_async
 from keyboards.main import main_keyboard, profile_keyboard
 from models import PROFILE_BUTTONS
 from models.states import Onboarding
@@ -19,12 +19,46 @@ router = Router()
 @router.message(Onboarding.waiting_name)
 async def onboarding_name(message: types.Message, state: FSMContext) -> None:
     name = message.text.strip() if message.text else "друг"
+    user = message.from_user
+    if user is not None:
+        await update_profile_fields_async(user.id, full_name=name)
     await state.update_data(name=name)
-    await state.set_state(Onboarding.waiting_profile)
+    await state.set_state(Onboarding.waiting_workplace)
 
     await message.answer(
         f"Очень приятно, {name}! 🤗\n\n"
-        "Теперь расскажи, чем ты занимаешься,\n"
+        "Где ты работаешь?\n"
+        "(Напиши название организации или профессию)",
+    )
+
+
+@router.message(Onboarding.waiting_workplace)
+async def onboarding_workplace(message: types.Message, state: FSMContext) -> None:
+    workplace = (message.text or "").strip()
+    user = message.from_user
+    if user is not None:
+        await update_profile_fields_async(user.id, workplace=workplace)
+        await state.update_data(workplace=workplace)
+    await state.set_state(Onboarding.waiting_children)
+    await message.answer(
+        "👶 У тебя есть дети? (Напиши «Да» или «Нет»)",
+    )
+
+
+@router.message(Onboarding.waiting_children)
+async def onboarding_children(message: types.Message, state: FSMContext) -> None:
+    val = (message.text or "").strip().lower()
+    if val not in ("да", "есть", "yes", "1", "нет", "не", "no", "0"):
+        await message.answer("Ответь «Да» или «Нет»:")
+        return
+    has_children = 1 if val in ("да", "есть", "yes", "1") else 0
+    user = message.from_user
+    if user is not None:
+        await update_profile_fields_async(user.id, has_children=has_children)
+        await state.update_data(has_children=has_children)
+    await state.set_state(Onboarding.waiting_profile)
+    await message.answer(
+        "Расскажи, чем ты занимаешься,\n"
         "чтобы я мог давать самые полезные советы:",
         reply_markup=profile_keyboard(),
     )
@@ -76,12 +110,16 @@ async def onboarding_city(message: types.Message, state: FSMContext) -> None:
     data = await state.get_data()
     name = data.get("name", user.full_name or "друг")
     profile = data.get("profile", "Обычный")
+    workplace = data.get("workplace", "")
+    children = "Да" if data.get("has_children") else "Нет"
     await state.clear()
 
     await message.answer(
         f"✅ Всё готово, {name}!\n\n"
         f"👤 Профиль: {profile}\n"
-        f"🏙 Город: {city}\n\n"
+        f"🏙 Город: {city}\n"
+        f"💼 Работа: {workplace}\n"
+        f"👶 Дети: {children}\n\n"
         "Вот что я умею:",
         reply_markup=main_keyboard(),
     )

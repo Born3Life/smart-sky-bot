@@ -1,48 +1,31 @@
 # SmartSkyBot 🌤
 
-Персональный погодный помощник в Telegram. Рекомендации с учётом профиля пользователя.
+Персональный погодный помощник в Telegram.
+Погода через Gismeteo (основной) + OpenWeather (fallback).
+AI-рекомендации, профильные советы, Telegram Stars.
 
-## Возможности
-
-- 🌤 Погода в любом городе мира  
-- 👤 6 профилей: Строитель, Водитель, Родитель, Дачник, Рыбак, Обычный  
-- 📋 Персональные советы по погоде для каждого профиля  
-- 🏙 Смена города  
-
-## Установка
+## Быстрый старт
 
 ```bash
 git clone https://github.com/Born3Life/smart-sky-bot.git
 cd smart-sky-bot
-uv venv
-.venv\Scripts\activate   # Windows
-source .venv/bin/activate # Linux/Mac
-uv sync
+uv sync --no-dev
+cp .env.example .env  # заполни токены
+uv run python bot.py
 ```
 
-## Настройка
+## Переменные окружения (.env)
 
-Скопируй `.env.example` → `.env` и заполни:
-
-```env
-BOT_TOKEN=токен_от_BotFather
-OPENWEATHER_API_KEY=ключ_OpenWeather
-```
-
-Получить ключи:
-- Бот: @BotFather  
-- OpenWeather: https://openweathermap.org/api  
-
-## Запуск
-
-```bash
-python bot.py
-```
+| Переменная | Описание |
+|---|---|
+| `BOT_TOKEN` | Токен от @BotFather |
+| `OPENWEATHER_API_KEY` | Ключ OpenWeather (fallback) |
+| `OPENROUTER_API_KEY` | Ключ OpenRouter (AI-советы) |
+| `TELEGRAM_PROXY` | Прокси для Telegram (опционально) |
 
 ## Деплой на Render
 
-1. Залить код на GitHub  
-2. Render → New Web Service → подключить репозиторий  
-3. **Build**: `pip install -r requirements.txt`  
-4. **Start**: `python -m bot`  
-5. **Env**: BOT_TOKEN, OPENWEATHER_API_KEY  
+1. Связать GitHub репозиторий с Render Web Service
+2. Build: `uv sync --no-dev`
+3. Start: `uv run python bot.py`
+4. Установить `BOT_TOKEN`, `OPENWEATHER_API_KEY`, `OPENROUTER_API_KEY` в Dashboard

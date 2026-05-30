@@ -22,6 +22,9 @@ def main_keyboard() -> ReplyKeyboardMarkup:
             ],
             [
                 KeyboardButton(text="👤 Профиль"),
+                KeyboardButton(text="✏️ Изменить профиль"),
+            ],
+            [
                 KeyboardButton(text="🏙 Город"),
                 KeyboardButton(text="💎 Премиум"),
             ],
