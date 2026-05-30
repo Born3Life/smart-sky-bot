@@ -11,26 +11,30 @@ logger = logging.getLogger(__name__)
 
 BASE = "https://openrouter.ai/api/v1/chat/completions"
 
-AI_PROMPT = (
-    "Ты — метеоролог. Дай краткие персонализированные рекомендации "
-    "на основе данных погоды. Учти профиль пользователя: {profile}. "
-    "Напиши 2-3 совета на русском. Без лишних слов."
-)
 
-
-def ai_tip(profile: str, weather: WeatherData) -> str | None:
+def ai_tip(
+    has_children: int,
+    workplace: str,
+    weather: WeatherData,
+    city: str | None = None,
+) -> str | None:
     api_key = openrouter_api_key()
     if not api_key:
         return None
 
-    prompt = AI_PROMPT.format(profile=profile)
+    kids = "есть маленькие дети" if has_children else "нет детей"
+    prompt = (
+        "Ты — метеоролог. Дай одну персонализированную рекомендацию.\n"
+        f"Пользователь: {kids}, работа: {workplace or 'не указана'}.\n"
+        "Если есть дети — дай совет про них. "
+        "Если работа на улице — что взять с собой. "
+        "Если работа в помещении — что надеть.\n"
+        "Один совет, 1-2 предложения, по-русски. Без лишних слов."
+    )
     weather_text = (
-        f"Температура: {weather.temperature}°C, "
-        f"ветер: {weather.wind_speed} м/с, "
-        f"влажность: {weather.humidity}%, "
-        f"давление: {weather.pressure} гПа, "
-        f"осадки: {weather.rain_1h or 0} мм, "
-        f"описание: {weather.description}"
+        f"Город: {city or weather.city_name}. "
+        f"Сейчас: {weather.temperature}°C, {weather.description}. "
+        f"Ветер {weather.wind_speed} м/с, влажность {weather.humidity}%."
     )
 
     try:
@@ -42,7 +46,7 @@ def ai_tip(profile: str, weather: WeatherData) -> str | None:
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": weather_text},
                 ],
-                "max_tokens": 200,
+                "max_tokens": 150,
             },
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=15,

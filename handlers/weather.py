@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 from aiogram import F, Router, types
 from aiogram.filters import Command, StateFilter
@@ -9,8 +8,8 @@ from aiogram.filters import Command, StateFilter
 from database import get_user_async
 from keyboards.main import main_keyboard
 from services.ai_recommendations import ai_tip
-from services.recommendation import get_recommendations
-from services.weather_forecast import fetch_forecast, fetch_raw_forecast, fmt_forecast
+from services.recommendation import fmt_windows
+from services.weather_forecast import fetch_forecast, fmt_forecast
 from services.weather_text import fmt_weather
 from services.web_search import weather_search
 from weather import fetch_by_city, fetch_by_coords, ts_to_time
@@ -20,20 +19,25 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-async def _get_city_profile(
+async def _get_user_info(
     user_id: int,
-) -> tuple[str | None, str | None]:
+) -> dict:
     info = await get_user_async(user_id)
     if not info:
-        return None, None
-    return info.get("city"), info.get("profile_type", "Обычный")
+        return {"city": None, "has_children": 0, "workplace": ""}
+    return {
+        "city": info.get("city"),
+        "has_children": info.get("has_children", 0),
+        "workplace": info.get("workplace", ""),
+    }
 
 
 async def _weather_or_prompt(
     message: types.Message,
     sent: types.Message,
     city: str,
-    profile: str,
+    has_children: int = 0,
+    workplace: str = "",
 ) -> None:
     weather = fetch_by_city(city)
     if weather is None:
@@ -44,13 +48,23 @@ async def _weather_or_prompt(
         return
 
     weather_block = fmt_weather(weather)
-    recs = get_recommendations(profile, weather, city)
-    rec_lines = "\n".join(f"• {r}" for r in recs)
+    windows = fmt_windows(city) if city else None
 
-    await sent.edit_text(
-        f"{weather_block}"
-        f"\n\n👤 <b>Рекомендации для «{profile}»:</b>\n{rec_lines}"
-    )
+    output = [weather_block, "", "📋 <b>Прогноз на сегодня:</b>"]
+    if windows:
+        output.append(windows)
+    else:
+        output.append(f"🌡 {weather.temperature}°C, {weather.description.capitalize()}")
+
+    tip = ai_tip(has_children, workplace, weather, city)
+    if tip:
+        output.append("")
+        output.append(f"🤖 <b>AI-рекомендация:</b>\n{tip}")
+    elif windows:
+        output.append("")
+        output.append("💡 По данным прогноза — планируй день с учётом окон.")
+
+    await sent.edit_text("\n".join(output))
     await message.answer("Выбери действие:", reply_markup=main_keyboard())
 
 
@@ -61,16 +75,14 @@ async def handle_weather_now(message: types.Message) -> None:
     if user is None:
         return
 
-    city, profile = await _get_city_profile(user.id)
+    info = await _get_user_info(user.id)
+    city = info["city"]
     if not city:
         await message.answer("🏙 Сначала укажи город через «🏙 Город».")
         return
-    if profile is None:
-        await message.answer("Напиши /start, чтобы зарегистрироваться")
-        return
 
     sent = await message.answer("🔍 Получаю данные о погоде...")
-    await _weather_or_prompt(message, sent, city, profile)
+    await _weather_or_prompt(message, sent, city, info["has_children"], info["workplace"])
 
 
 @router.message(F.text == "📅 Сегодня", StateFilter(None))
@@ -79,11 +91,10 @@ async def handle_today_mini(message: types.Message) -> None:
     if user is None:
         return
 
-    city, profile = await _get_city_profile(user.id)
+    info = await _get_user_info(user.id)
+    city = info["city"]
     if not city:
         await message.answer("🏙 Сначала укажи город.")
-        return
-    if profile is None:
         return
 
     weather = fetch_by_city(city)
@@ -105,31 +116,10 @@ async def handle_today_mini(message: types.Message) -> None:
     if weather.sunset:
         lines.append(f"🌇 Закат: {ts_to_time(weather.sunset)}")
 
-    # Day/night breakdown from forecast
-    raw = fetch_raw_forecast(city)
-    if raw:
-        day_temps: list[float] = []
-        night_temps: list[float] = []
-        day_descs: list[str] = []
-        for item in raw:
-            h = datetime.strptime(item["dt_txt"], "%Y-%m-%d %H:%M:%S").hour
-            if 6 <= h < 18:
-                day_temps.append(item["temp"])
-                day_descs.append(item["desc"])
-            else:
-                night_temps.append(item["temp"])
-
-        if day_temps:
-            t_day = round(sum(day_temps) / len(day_temps))
-            desc_day = max(set(day_descs), key=day_descs.count) if day_descs else ""
-            lines.append(f"☀️ День: {t_day}°C, {desc_day}")
-        if night_temps:
-            t_night = round(sum(night_temps) / len(night_temps))
-            lines.append(f"🌙 Ночь: {t_night}°C")
-
-    lines.append("")
-    recs = get_recommendations(profile, weather, city)
-    lines.extend(f"• {r}" for r in recs[:2])
+    windows = fmt_windows(city)
+    if windows:
+        lines.append("")
+        lines.append(windows)
 
     await message.answer("\n".join(lines))
     await message.answer("Выбери действие:", reply_markup=main_keyboard())
@@ -141,7 +131,8 @@ async def handle_tomorrow(message: types.Message) -> None:
     if user is None:
         return
 
-    city, _ = await _get_city_profile(user.id)
+    info = await _get_user_info(user.id)
+    city = info["city"]
     if not city:
         await message.answer("🏙 Сначала укажи город.")
         return
@@ -168,7 +159,8 @@ async def handle_forecast(message: types.Message) -> None:
     if user is None:
         return
 
-    city, _ = await _get_city_profile(user.id)
+    info = await _get_user_info(user.id)
+    city = info["city"]
     if not city:
         await message.answer("🏙 Сначала укажи город.")
         return
@@ -216,7 +208,8 @@ async def handle_uv(message: types.Message) -> None:
     if user is None:
         return
 
-    city, _ = await _get_city_profile(user.id)
+    info = await _get_user_info(user.id)
+    city = info["city"]
     if not city:
         await message.answer("🏙 Сначала укажи город.")
         return
@@ -252,11 +245,10 @@ async def handle_ai_tip(message: types.Message) -> None:
     if user is None:
         return
 
-    city, profile = await _get_city_profile(user.id)
+    info = await _get_user_info(user.id)
+    city = info["city"]
     if not city:
         await message.answer("🏙 Сначала укажи город.")
-        return
-    if profile is None:
         return
 
     weather = fetch_by_city(city)
@@ -265,22 +257,24 @@ async def handle_ai_tip(message: types.Message) -> None:
         return
 
     sent = await message.answer("🤖 Думаю...")
-    tip = ai_tip(profile, weather)
-    if tip:
-        await sent.edit_text(
-            f"🤖 <b>Рекомендации для «{profile}»</b>\n\n"
-            f"🏙 {city} | {weather.description.capitalize()}, {weather.temperature}°C\n\n"
-            f"{tip}"
-        )
-        return
+    windows = fmt_windows(city)
+    tip = ai_tip(info["has_children"], info["workplace"], weather, city)
 
-    recs = get_recommendations(profile, weather, city)
-    rec_lines = "\n".join(f"• {r}" for r in recs)
-    await sent.edit_text(
-        f"🤖 <b>Рекомендации для «{profile}»</b>\n\n"
-        f"🏙 {city} | {weather.description.capitalize()}, {weather.temperature}°C\n\n"
-        f"{rec_lines}"
-    )
+    output = [
+        f"🤖 <b>AI-рекомендация</b>\n"
+        f"🏙 {city} | {weather.description.capitalize()}, {weather.temperature}°C",
+    ]
+    if windows:
+        output.append("")
+        output.append(windows)
+    if tip:
+        output.append("")
+        output.append(tip)
+    elif windows:
+        output.append("")
+        output.append("💡 По данным прогноза — планируй день с учётом окон.")
+
+    await sent.edit_text("\n".join(output))
 
 
 @router.message(F.text == "🔍 Поиск", StateFilter(None))
@@ -289,7 +283,8 @@ async def handle_search(message: types.Message) -> None:
     if user is None:
         return
 
-    city, _ = await _get_city_profile(user.id)
+    info = await _get_user_info(user.id)
+    city = info["city"]
     if not city:
         await message.answer("🏙 Сначала укажи город.")
         return
@@ -333,14 +328,15 @@ async def handle_location(message: types.Message) -> None:
         await sent.edit_text("❌ Не удалось получить погоду.")
         return
 
-    profile = "Обычный"
-    city, p = await _get_city_profile(user.id)
-    if p:
-        profile = p
+    info = await _get_user_info(user.id)
+    city = weather.city_name if weather else info["city"]
 
-    recs = get_recommendations(profile, weather, weather.city_name if weather else city)
-    rec_lines = "\n".join(f"• {r}" for r in recs)
+    weather_block = fmt_weather(weather)
+    windows = fmt_windows(city) if city else None
+    output = [weather_block]
+    if windows:
+        output.append("")
+        output.append(windows)
 
-    rec_text = f"\n\n👤 <b>Рекомендации для «{profile}»:</b>\n{rec_lines}"
-    await sent.edit_text(f"{fmt_weather(weather)}{rec_text}")
+    await sent.edit_text("\n".join(output))
     await message.answer("Выбери действие:", reply_markup=main_keyboard())

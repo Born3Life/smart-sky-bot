@@ -1,207 +1,67 @@
 from __future__ import annotations
 
-from models import WeatherData
+from datetime import datetime
 
-from .weather_forecast import fetch_raw_forecast, fmt_precipitation
-
-
-def _has_rain(w: WeatherData) -> bool:
-    desc = w.description.lower()
-    return bool(
-        (w.rain_1h and w.rain_1h > 0)
-        or any(k in desc for k in ("дожд", "гроз", "ливн", "осадк")),
-    )
+from .weather_forecast import fetch_raw_forecast
 
 
-def _rain_timing(city: str | None) -> str | None:
-    if not city:
-        return None
+def fmt_windows(city: str) -> str | None:
+    """Return good/bad weather windows from 3-hour forecast."""
     forecast = fetch_raw_forecast(city)
     if not forecast:
         return None
-    return fmt_precipitation(forecast)
+
+    good_blocks: list[list[dict]] = []
+    bad_blocks: list[list[dict]] = []
+    cur: list[dict] = []
+    cur_good = True
+
+    for e in forecast:
+        good = _is_good(e)
+        if good != cur_good and cur:
+            (good_blocks if cur_good else bad_blocks).append(cur)
+            cur = []
+            cur_good = good
+        cur.append(e)
+    if cur:
+        (good_blocks if cur_good else bad_blocks).append(cur)
+
+    lines = []
+    for block in good_blocks:
+        start = _fmt_time(block[0]["dt_txt"])
+        end = _fmt_time(block[-1]["dt_txt"])
+        lines.append(f"✅ Хорошая погода: {start}–{end}")
+    for block in bad_blocks:
+        start = _fmt_time(block[0]["dt_txt"])
+        end = _fmt_time(block[-1]["dt_txt"])
+        desc = block[0].get("desc", "осадки")
+        lines.append(f"⚠️ {desc.capitalize()}: {start}–{end}")
+
+    return "\n".join(lines) if lines else None
 
 
-def _builder(w: WeatherData, city: str | None = None) -> list[str]:
-    tips: list[str] = []
-    if _has_rain(w):
-        rt = _rain_timing(city)
-        if rt:
-            tips.append(rt)
-        else:
-            tips.append("🌧 Ожидаются осадки — возьми дождевик")
-    if w.temperature < 0:
-        tips.append("❄️ Возможны заморозки — проверь смеси и растворы")
-    if w.wind_speed > 10:
-        tips.append("💨 Сильный ветер — отложи высотные работы")
-    if w.temperature > 30:
-        tips.append("☀️ Жара — пей воду и работай в тени")
-    if not tips:
-        tips.append("✅ Погода рабочая — можно строить!")
-    return tips
+def _is_good(entry: dict) -> bool:
+    rain = entry.get("rain", 0) or 0
+    snow = entry.get("snow", 0) or 0
+    wind = entry.get("wind", 0) or 0
+    temp = entry.get("temp", 20)
+    desc = (entry.get("desc") or "").lower()
+    if rain > 0 or snow > 0:
+        return False
+    if any(k in desc for k in ("дожд", "гроз", "снег")):
+        return False
+    if wind > 10:
+        return False
+    if temp < 0 or temp > 35:
+        return False
+    return True
 
 
-def _driver(w: WeatherData, city: str | None = None) -> list[str]:
-    tips: list[str] = []
-    if w.temperature < 0 and w.humidity > 80:
-        tips.append("⚠️ Гололедица — будь аккуратен на дороге")
-    if w.visibility and w.visibility < 1000:
-        tips.append("🌫 Туман — включи противотуманки, снизь скорость")
-    if w.wind_speed > 12:
-        tips.append("💨 Сильный ветер — осторожно на мостах и трассах")
-    if _has_rain(w):
-        rt = _rain_timing(city)
-        if rt:
-            tips.append(rt)
-        else:
-            tips.append("🌧 Дождь — увеличь дистанцию, включи дворники")
-    if w.snow_1h and w.snow_1h > 0:
-        tips.append("❄️ Снегопад — проверь резину")
-    if not tips:
-        tips.append("✅ Дорожные условия благоприятные")
-    return tips
-
-
-def _parent(w: WeatherData, city: str | None = None) -> list[str]:
-    tips: list[str] = []
-    if w.temperature < -5:
-        tips.append("🧥 Ребёнку нужен тёплый комбинезон, шапка и шарф")
-    elif w.temperature < 5:
-        tips.append("🧥 Одень ребёнка в куртку потеплее")
-    elif w.temperature > 25:
-        tips.append("👕 Лёгкая одежда, головной убор и вода обязательны")
-    if w.wind_speed > 8:
-        tips.append("💨 Ветрено — закрой уши и горло ребёнку")
-    if _has_rain(w):
-        rt = _rain_timing(city)
-        if rt:
-            tips.append(rt)
-        else:
-            tips.append("☔ Не забудь зонт и непромокаемую обувь")
-    if not tips:
-        tips.append("✅ Погода комфортная для прогулки с ребёнком")
-    return tips
-
-
-def _gardener(w: WeatherData, city: str | None = None) -> list[str]:
-    tips: list[str] = []
-    if w.temperature < 0:
-        tips.append("❄️ Заморозки — укрой растения на ночь")
-    if _has_rain(w):
-        rt = _rain_timing(city)
-        if rt:
-            tips.append(rt)
-            tips.append("💧 Полив не нужен — дождь сделает работу")
-        else:
-            tips.append("💧 Полив не нужен — дождь сделает работу")
-    elif w.temperature > 20 and w.humidity < 50:
-        tips.append("💦 Засушливо — пора поливать грядки")
-    if w.wind_speed > 8:
-        tips.append("🌬 Сильный ветер — проверь подвязки растений")
-    if not tips:
-        tips.append("✅ Хороший день для работы в саду")
-    return tips
-
-
-def _fisher(w: WeatherData, city: str | None = None) -> list[str]:
-    tips: list[str] = []
-    if w.wind_speed > 8:
-        tips.append("🎣 Ветер сильный — клёв слабый, ищи затишье")
-    elif w.wind_speed < 3:
-        tips.append("🎣 Штиль — отличный клёв!")
-    pressure_mm = w.pressure * 0.750064
-    if pressure_mm < 745:
-        tips.append("📉 Давление низкое — рыба активна, но капризна")
-    elif pressure_mm > 765:
-        tips.append("📈 Давление высокое — попробуй донку")
-    if _has_rain(w):
-        rt = _rain_timing(city)
-        if rt:
-            tips.append(rt)
-        else:
-            tips.append("🌧 Дождь — рыба уходит на глубину")
-    if not tips:
-        tips.append("✅ Хорошие условия для рыбалки!")
-    return tips
-
-
-def _default(w: WeatherData, city: str | None = None) -> list[str]:
-    tips: list[str] = []
-    if w.temperature > 30:
-        tips.append("☀️ Жарко — избегай долгого пребывания на солнце")
-    elif w.temperature < -10:
-        tips.append("🥶 Очень холодно — одевайся многослойно")
-    if _has_rain(w):
-        rt = _rain_timing(city)
-        if rt:
-            tips.append(rt)
-        else:
-            tips.append("🌧 Дождь — возьми зонт, одевайся по погоде")
-    if w.wind_speed > 12:
-        tips.append("💨 Ветрено — убери с балкона лёгкие вещи")
-    if not tips:
-        tips.append("✅ Погода комфортная — наслаждайся днём!")
-    return tips
-
-
-def _sports(w: WeatherData, city: str | None = None) -> list[str]:
-    tips: list[str] = []
-    if w.temperature > 28:
-        tips.append("🥵 Жара — перенеси тренировку на утро/вечер")
-    elif w.temperature < -10:
-        tips.append("🥶 Мороз — короткая тренировка, тёплая одежда")
-    if w.wind_speed > 8:
-        tips.append("💨 Сильный ветер — вело/бег будут тяжёлыми")
-    if _has_rain(w):
-        rt = _rain_timing(city)
-        if rt:
-            tips.append(rt)
-        else:
-            tips.append("🌧 Дождь — скользко, выбери крытый зал")
-    if w.humidity > 85:
-        tips.append("💧 Высокая влажность — тяжело дышать, снизь темп")
-    if not tips:
-        tips.append("✅ Отличная погода для тренировки!")
-    return tips
-
-
-def _allergy(w: WeatherData, city: str | None = None) -> list[str]:
-    tips: list[str] = []
-    if w.temperature > 20 and w.humidity > 60:
-        tips.append("🌿 Высокий риск пыльцы — закрой окна, прими антигистамин")
-    if w.wind_speed > 5:
-        tips.append("💨 Ветер разносит пыльцу — надень маску на улице")
-    if _has_rain(w):
-        rt = _rain_timing(city)
-        if rt:
-            tips.append(rt)
-            tips.append("🌧 Дождь прибивает пыльцу — хороший день для прогулки")
-        else:
-            tips.append("🌧 Дождь прибивает пыльцу — хороший день для прогулки")
-    if w.humidity > 80:
-        tips.append("💧 Сырость — риск плесени, проветривай")
-    if not tips:
-        tips.append("✅ Низкий риск аллергии")
-    return tips
-
-
-_RECOMMENDATIONS = {
-    "Строитель": _builder,
-    "Водитель": _driver,
-    "Родитель": _parent,
-    "Дачник": _gardener,
-    "Рыбак": _fisher,
-    "Обычный": _default,
-    "Спортсмен": _sports,
-    "Аллергик": _allergy,
-}
-
-
-def get_recommendations(
-    profile: str,
-    weather: WeatherData,
-    city: str | None = None,
-) -> list[str]:
-    func = _RECOMMENDATIONS.get(profile, _default)
-    tips = func(weather, city)
-    return tips
+def _fmt_time(dt_str: str | None) -> str:
+    if dt_str is None:
+        return "—"
+    try:
+        dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+        return dt.strftime("%H:%M")
+    except (ValueError, TypeError):
+        return dt_str or "—"

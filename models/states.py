@@ -5,9 +5,8 @@ from aiogram.fsm.state import State, StatesGroup
 
 class Onboarding(StatesGroup):
     waiting_name = State()
-    waiting_workplace = State()
     waiting_children = State()
-    waiting_profile = State()
+    waiting_workplace = State()
     waiting_city = State()
 
 
