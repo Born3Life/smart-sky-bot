@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from config import bot_token, telegram_proxy
 from database import init_db_async
 from handlers import routers
+from middleware.onboarding import OnboardingMiddleware
 from middleware.premium import PremiumMiddleware
 from services.weather_monitor import _init_cache_table, check_and_notify
 
@@ -67,6 +68,7 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher(storage=MemoryStorage())
+    dp.message.middleware(OnboardingMiddleware())
     dp.message.middleware(PremiumMiddleware())
 
     for router in routers:

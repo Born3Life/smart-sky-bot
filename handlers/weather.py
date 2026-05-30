@@ -258,7 +258,10 @@ async def handle_ai_tip(message: types.Message) -> None:
 
     sent = await message.answer("🤖 Думаю...")
     windows = fmt_windows(city)
-    tip = ai_tip(info["has_children"], info["workplace"], weather, city)
+    if user is not None:
+        tip = ai_tip(info["has_children"], info["workplace"], weather, city, user_id=user.id)
+    else:
+        tip = ai_tip(info["has_children"], info["workplace"], weather, city)
 
     output = [
         f"🤖 <b>AI-рекомендация</b>\n"

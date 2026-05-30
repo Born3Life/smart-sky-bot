@@ -6,7 +6,7 @@ from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 
 from database import update_city_async, update_profile_fields_async
-from keyboards.main import main_keyboard
+from keyboards.main import main_keyboard, workplace_keyboard
 from models.states import Onboarding
 from weather import fetch_by_city
 
@@ -17,17 +17,16 @@ router = Router()
 
 @router.message(Onboarding.waiting_name)
 async def onboarding_name(message: types.Message, state: FSMContext) -> None:
-    name = (message.text or "").strip() or "друг"
+    name = (message.text or "").strip()
+    if not name:
+        await message.answer("Напиши, как тебя зовут:")
+        return
     user = message.from_user
     if user is not None:
         await update_profile_fields_async(user.id, full_name=name)
     await state.update_data(name=name)
     await state.set_state(Onboarding.waiting_children)
-
-    await message.answer(
-        f"Очень приятно, {name}! 🤗\n\n"
-        "У тебя есть маленькие дети? (Напиши «Да» или «Нет»)",
-    )
+    await message.answer(f"Приятно познакомиться, {name}! 👋\n\nЕсть ли маленькие дети? (Да / Нет)")
 
 
 @router.message(Onboarding.waiting_children)
@@ -42,25 +41,27 @@ async def onboarding_children(message: types.Message, state: FSMContext) -> None
         await update_profile_fields_async(user.id, has_children=has_children)
     await state.update_data(has_children=has_children)
     await state.set_state(Onboarding.waiting_workplace)
-
     await message.answer(
-        "Кем ты работаешь?\n"
-        "(Напиши профессию, например: строитель, водитель, офисный работник)",
+        "Где ты работаешь?",
+        reply_markup=workplace_keyboard(),
     )
 
 
 @router.message(Onboarding.waiting_workplace)
 async def onboarding_workplace(message: types.Message, state: FSMContext) -> None:
-    workplace = (message.text or "").strip()
+    text = (message.text or "").strip()
+    if text not in ("🏗 На улице", "🏢 В здании", "на улице", "в здании"):
+        await message.answer("Выбери вариант на клавиатуре 👇", reply_markup=workplace_keyboard())
+        return
+    workplace = "на улице" if "улице" in text else "в здании"
     user = message.from_user
     if user is not None:
         await update_profile_fields_async(user.id, workplace=workplace)
     await state.update_data(workplace=workplace)
     await state.set_state(Onboarding.waiting_city)
-
     await message.answer(
-        "А в каком городе ты находишься?\n"
-        "Напиши название (например: Москва, Северск):",
+        "В каком городе ты проживаешь?\n(Например: Москва, Северск)",
+        reply_markup=types.ReplyKeyboardRemove(),
     )
 
 
@@ -68,15 +69,12 @@ async def onboarding_workplace(message: types.Message, state: FSMContext) -> Non
 async def onboarding_city(message: types.Message, state: FSMContext) -> None:
     user = message.from_user
     if user is None or not message.text:
-        await message.answer("Напиши название города текстом:")
         return
 
     city = message.text.strip()
     weather = fetch_by_city(city)
     if weather is None:
-        await message.answer(
-            f"❌ Город «{city}» не найден.\nПроверь название и попробуй ещё раз:",
-        )
+        await message.answer(f"❌ Город «{city}» не найден. Попробуй ещё раз:")
         return
 
     await update_city_async(user.id, city)
@@ -87,59 +85,10 @@ async def onboarding_city(message: types.Message, state: FSMContext) -> None:
     await state.clear()
 
     await message.answer(
-        f"✅ Всё готово, {name}!\n\n"
+        f"✅ Готово, {name}!\n\n"
         f"🏙 Город: {city}\n"
-        f"👶 Дети: {children}\n"
+        f"👶 Маленькие дети: {children}\n"
         f"💼 Работа: {workplace}\n\n"
-        "Вот что я умею:",
+        "Теперь я могу давать персональные советы по погоде!",
         reply_markup=main_keyboard(),
     )
-
-    await message.answer(
-        "🌤 <b>Погода сейчас</b> — температура, ветер, влажность\n"
-        "📅 <b>Сегодня / Завтра</b> — краткий прогноз\n"
-        "🌅 <b>Рассвет / Закат</b> — время восхода\n"
-        "☀️ <b>UV-индекс</b> — уровень солнечной активности\n"
-        "📍 <b>Погода здесь</b> — по геолокации\n"
-        "🤖 <b>AI Совет</b> — персональные рекомендации\n\n"
-        "Просто нажимай на кнопки! 👇",
-    )
-
-    await message.answer(
-        "🌟 <b>SmartSky Premium</b> — больше возможностей!\n\n"
-        "— 📅 Прогноз на 7 дней\n"
-        "— 🤖 AI-рекомендации\n"
-        "— 🔔 Ежедневные уведомления\n\n"
-        "💰 <b>50 ⭐ Telegram Stars / месяц</b>\n\n"
-        "Попробуй 7 дней бесплатно! 👇",
-        reply_markup=types.InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    types.InlineKeyboardButton(
-                        text="🎁 7 дней бесплатно",
-                        callback_data="trial",
-                    ),
-                ],
-                [
-                    types.InlineKeyboardButton(
-                        text="💳 Купить 50⭐",
-                        callback_data="buy_stars",
-                    ),
-                ],
-                [
-                    types.InlineKeyboardButton(
-                        text="🔜 Позже",
-                        callback_data="later",
-                    ),
-                ],
-            ],
-        ),
-    )
-
-
-@router.callback_query(F.data == "later")
-async def handle_later(callback: types.CallbackQuery) -> None:
-    await callback.message.edit_text(
-        "Хорошо! Если надумаешь — нажми «💎 Премиум» в меню 🚀",
-    )
-    await callback.answer()

@@ -5,6 +5,7 @@ import logging
 import requests
 
 from config import openrouter_api_key
+from database import get_history
 from models import WeatherData
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,7 @@ def ai_tip(
     workplace: str,
     weather: WeatherData,
     city: str | None = None,
+    user_id: int | None = None,
 ) -> str | None:
     api_key = openrouter_api_key()
     if not api_key:
@@ -31,21 +33,28 @@ def ai_tip(
         "Если работа в помещении — что надеть.\n"
         "Один совет, 1-2 предложения, по-русски. Без лишних слов."
     )
+
     weather_text = (
         f"Город: {city or weather.city_name}. "
         f"Сейчас: {weather.temperature}°C, {weather.description}. "
         f"Ветер {weather.wind_speed} м/с, влажность {weather.humidity}%."
     )
 
+    messages = [{"role": "system", "content": prompt}]
+
+    if user_id:
+        history = get_history(user_id, limit=300)
+        for h in history:
+            messages.append({"role": h["role"], "content": h["text"]})
+
+    messages.append({"role": "user", "content": weather_text})
+
     try:
         resp = requests.post(
             BASE,
             json={
                 "model": "openai/gpt-4o-mini",
-                "messages": [
-                    {"role": "system", "content": prompt},
-                    {"role": "user", "content": weather_text},
-                ],
+                "messages": messages,
                 "max_tokens": 150,
             },
             headers={"Authorization": f"Bearer {api_key}"},

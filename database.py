@@ -73,8 +73,19 @@ def init_db() -> None:
                 FOREIGN KEY (referred_by) REFERENCES users(user_id)
             )
         """)
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS message_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                text TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
+            )
+        """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_users_city ON users(city)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_users_premium ON users(is_premium)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_msg_user ON message_history(user_id, created_at)")
         logger.info("database ready at %s", DB_PATH)
     _migrate_add_columns()
 
@@ -233,3 +244,51 @@ async def activate_trial_async(user_id: int) -> bool:
 async def set_premium_async(user_id: int, days: int) -> None:
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, _set_premium, user_id, days)
+
+
+# ── Message history (last 300 per user) ──
+
+def add_message(user_id: int, role: str, text: str) -> None:
+    """Store a message in history; keep only last 300 per user."""
+    with tx() as c:
+        c.execute(
+            "INSERT INTO message_history (user_id, role, text) VALUES (?, ?, ?)",
+            (user_id, role, text),
+        )
+        # Delete older messages exceeding 300
+        c.execute(
+            """
+            DELETE FROM message_history
+            WHERE id IN (
+                SELECT id FROM message_history
+                WHERE user_id = ?
+                ORDER BY id DESC
+                LIMIT -1 OFFSET 300
+            )
+            """,
+            (user_id,),
+        )
+
+
+def get_history(user_id: int, limit: int = 300) -> list[dict[str, str]]:
+    """Return last `limit` messages for a user, oldest first."""
+    with tx() as c:
+        rows = c.execute(
+            """
+            SELECT role, text FROM message_history
+            WHERE user_id = ?
+            ORDER BY id ASC
+            """,
+            (user_id,),
+        ).fetchall()
+    return [{"role": r["role"], "text": r["text"]} for r in rows[-limit:]]
+
+
+async def add_message_async(user_id: int, role: str, text: str) -> None:
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, add_message, user_id, role, text)
+
+
+async def get_history_async(user_id: int, limit: int = 300) -> list[dict[str, str]]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, get_history, user_id, limit)

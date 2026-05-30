@@ -36,6 +36,17 @@ def main_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+def workplace_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🏗 На улице")],
+            [KeyboardButton(text="🏢 В здании")],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
 def profile_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
