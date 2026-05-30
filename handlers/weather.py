@@ -259,8 +259,31 @@ async def handle_ai_tip(message: types.Message) -> None:
             f"🌡 {weather.temperature}°C\n\n"
             f"{tip}"
         )
-    else:
-        await sent.edit_text("❌ Не удалось получить AI-рекомендацию. Попробуй позже.")
+        return
+
+    # Fallback: profile recommendations + web search
+    recs = get_recommendations(profile, weather, city)
+    rec_lines = "\n".join(f"• {r}" for r in recs)
+    web_results = weather_search(city)
+    web_lines = ""
+    if web_results:
+        snippets = []
+        for r in web_results[:2]:
+            snip = r.get("snippet", "")
+            if snip:
+                snippets.append(f"• {snip[:150]}")
+        if snippets:
+            web_lines = "\n\n🔍 <b>Из интернета:</b>\n" + "\n".join(snippets)
+
+    await sent.edit_text(
+        f"🤖 <b>Рекомендации для «{profile}»</b>\n\n"
+        f"🏙 {city} | {weather.description.capitalize()}\n"
+        f"🌡 {weather.temperature}°C\n\n"
+        f"<b>Советы:</b>\n{rec_lines}"
+        f"{web_lines}"
+        "\n\n💡 AI-рекомендации временно недоступны, "
+        "использованы профильные советы + поиск."
+    )
 
 
 @router.message(F.text == "🔍 Поиск", StateFilter(None))

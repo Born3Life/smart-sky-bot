@@ -8,6 +8,7 @@ import requests
 
 from config import openweather_api_key
 from models import WeatherData
+from services.gismeteo import fetch_by_city as gismeteo_fetch
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,32 @@ BASE_URL = "https://api.openweathermap.org/data/2.5/weather"
 UV_URL = "https://api.openweathermap.org/data/2.5/uvi"
 
 
-def _parse(data: dict[str, Any], city_name: str) -> WeatherData:
+def fetch_by_city(city: str) -> WeatherData | None:
+    """Try gismeteo first, fall back to OpenWeather."""
+    weather = gismeteo_fetch(city)
+    if weather is not None:
+        logger.info("gismeteo OK for %s", city)
+        return weather
+
+    logger.info("gismeteo failed, fallback to OpenWeather for %s", city)
+    return _ow_fetch_by_city(city)
+
+
+def fetch_by_coords(lat: float, lon: float) -> WeatherData | None:
+    """Fallback: OpenWeather by coords."""
+    return _ow_fetch_by_coords(lat, lon)
+
+
+def ts_to_time(ts: int | None) -> str:
+    if ts is None:
+        return "—"
+    return datetime.fromtimestamp(ts).strftime("%H:%M")
+
+
+# ---------- OpenWeather fallbacks ----------
+
+
+def _ow_parse(data: dict[str, Any], city_name: str) -> WeatherData:
     main = data["main"]
     wind = data["wind"]
     weather = data["weather"][0]
@@ -43,10 +69,9 @@ def _parse(data: dict[str, Any], city_name: str) -> WeatherData:
     )
 
 
-def fetch_by_city(city: str) -> WeatherData | None:
+def _ow_fetch_by_city(city: str) -> WeatherData | None:
     api_key = openweather_api_key()
     if not api_key:
-        logger.warning("OPENWEATHER_API_KEY not set")
         return None
 
     try:
@@ -57,15 +82,21 @@ def fetch_by_city(city: str) -> WeatherData | None:
         )
         resp.raise_for_status()
         data = resp.json()
-        weather = _parse(data, data.get("name", city))
-        weather.uvi = _fetch_uvi(data["coord"]["lat"], data["coord"]["lon"])
+        weather = _ow_parse(data, data.get("name", city))
+        try:
+            weather.uvi = _ow_fetch_uvi(
+                data["coord"]["lat"],
+                data["coord"]["lon"],
+            )
+        except Exception:
+            pass
         return weather
     except requests.RequestException:
         logger.exception("OpenWeather API error for city=%s", city)
         return None
 
 
-def fetch_by_coords(lat: float, lon: float) -> WeatherData | None:
+def _ow_fetch_by_coords(lat: float, lon: float) -> WeatherData | None:
     api_key = openweather_api_key()
     if not api_key:
         return None
@@ -84,15 +115,15 @@ def fetch_by_coords(lat: float, lon: float) -> WeatherData | None:
         )
         resp.raise_for_status()
         data = resp.json()
-        weather = _parse(data, data.get("name", f"{lat},{lon}"))
-        weather.uvi = _fetch_uvi(lat, lon)
+        weather = _ow_parse(data, data.get("name", f"{lat},{lon}"))
+        weather.uvi = _ow_fetch_uvi(lat, lon)
         return weather
     except requests.RequestException:
         logger.exception("OpenWeather API error for coords")
         return None
 
 
-def _fetch_uvi(lat: float, lon: float) -> float | None:
+def _ow_fetch_uvi(lat: float, lon: float) -> float | None:
     api_key = openweather_api_key()
     if not api_key:
         return None
@@ -106,9 +137,3 @@ def _fetch_uvi(lat: float, lon: float) -> float | None:
         return resp.json().get("value")
     except requests.RequestException:
         return None
-
-
-def ts_to_time(ts: int | None) -> str:
-    if ts is None:
-        return "—"
-    return datetime.fromtimestamp(ts).strftime("%H:%M")
