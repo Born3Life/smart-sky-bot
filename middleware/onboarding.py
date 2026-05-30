@@ -14,11 +14,6 @@ _ONBOARDING_BUTTONS = {
     "/start",
 }
 
-_HANDLER_MESSAGES = {
-    "👋 Напиши /start, чтобы зарегистрироваться и указать город.",
-    "👋 Напиши /start, чтобы начать.",
-}
-
 
 class OnboardingMiddleware(BaseMiddleware):
     async def __call__(
@@ -31,8 +26,15 @@ class OnboardingMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         text = event.text.strip()
-        if text in _ONBOARDING_BUTTONS or text in _HANDLER_MESSAGES:
+        if text in _ONBOARDING_BUTTONS:
             return await handler(event, data)
+
+        # Allow messages during FSM (onboarding flow)
+        state = data.get("state")
+        if state is not None:
+            current = await state.get_state()
+            if current is not None and current.startswith("Onboarding"):
+                return await handler(event, data)
 
         user_id = event.from_user.id if event.from_user else None
         if user_id is None:
