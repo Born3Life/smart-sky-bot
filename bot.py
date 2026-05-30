@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import sys
 from os import getenv
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiohttp import web
+from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter
 from dotenv import load_dotenv
 
 from config import bot_token, telegram_proxy
@@ -42,14 +43,14 @@ async def _health_server(port: int) -> None:
 
 
 async def _weather_monitor_loop(bot: Bot) -> None:
-    await asyncio.sleep(1800)  # first check after 30 min
+    await asyncio.sleep(1800)
     while True:
         try:
             await check_and_notify(bot)
             logger.info("weather monitor cycle done")
         except Exception:
             logger.exception("weather monitor error")
-        await asyncio.sleep(3600)  # every hour
+        await asyncio.sleep(3600)
 
 
 async def main() -> None:
@@ -58,12 +59,11 @@ async def main() -> None:
         asyncio.create_task(_health_server(int(port)))
 
     proxy = telegram_proxy()
-    if proxy:
-        os.environ["HTTP_PROXY"] = proxy
-        os.environ["HTTPS_PROXY"] = proxy
+    session = AiohttpSession(proxy=proxy) if proxy else AiohttpSession()
 
     bot = Bot(
         token=bot_token(),
+        session=session,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher(storage=MemoryStorage())
@@ -76,7 +76,16 @@ async def main() -> None:
     _init_cache_table()
     asyncio.create_task(_weather_monitor_loop(bot))
     logger.info("SmartSkyBot started")
-    await dp.start_polling(bot, polling_timeout=1)
+
+    while True:
+        try:
+            await dp.start_polling(bot, polling_timeout=1)
+        except (TelegramNetworkError, TelegramRetryAfter) as e:
+            logger.warning("Telegram connection error: %s — retry in 10s", e)
+            await asyncio.sleep(10)
+        except Exception:
+            logger.exception("Fatal polling error — retry in 30s")
+            await asyncio.sleep(30)
 
 
 if __name__ == "__main__":

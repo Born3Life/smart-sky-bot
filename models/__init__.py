@@ -21,6 +21,8 @@ class UserDict(TypedDict, total=False):
     notifications_enabled: bool
     notify_time: str
     language: str
+    workplace: str
+    has_children: int
 
 
 @dataclass

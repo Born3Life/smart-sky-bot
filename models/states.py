@@ -7,3 +7,7 @@ class Onboarding(StatesGroup):
     waiting_name = State()
     waiting_profile = State()
     waiting_city = State()
+
+
+class EditProfile(StatesGroup):
+    waiting_field = State()

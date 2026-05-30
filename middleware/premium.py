@@ -17,7 +17,6 @@ PREMIUM_FEATURES = [
     "/ai_tip",
     "/notifications",
     "📅 7 дней",
-    "🤖 AI Совет",
 ]
 
 

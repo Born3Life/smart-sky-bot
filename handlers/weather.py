@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from aiogram import F, Router, types
 from aiogram.filters import Command, StateFilter
@@ -9,7 +10,7 @@ from database import get_user_async
 from keyboards.main import main_keyboard
 from services.ai_recommendations import ai_tip
 from services.recommendation import get_recommendations
-from services.weather_forecast import fetch_forecast, fmt_forecast
+from services.weather_forecast import fetch_forecast, fetch_raw_forecast, fmt_forecast
 from services.weather_text import fmt_weather
 from services.web_search import weather_search
 from weather import fetch_by_city, fetch_by_coords, ts_to_time
@@ -113,6 +114,29 @@ async def handle_today_mini(message: types.Message) -> None:
         lines.append(f"🌅 Рассвет: {ts_to_time(weather.sunrise)}")
     if weather.sunset:
         lines.append(f"🌇 Закат: {ts_to_time(weather.sunset)}")
+
+    # Day/night breakdown from forecast
+    raw = fetch_raw_forecast(city)
+    if raw:
+        day_temps: list[float] = []
+        night_temps: list[float] = []
+        day_descs: list[str] = []
+        for item in raw:
+            h = datetime.strptime(item["dt_txt"], "%Y-%m-%d %H:%M:%S").hour
+            if 6 <= h < 18:
+                day_temps.append(item["temp"])
+                day_descs.append(item["desc"])
+            else:
+                night_temps.append(item["temp"])
+
+        if day_temps:
+            t_day = round(sum(day_temps) / len(day_temps))
+            desc_day = max(set(day_descs), key=day_descs.count) if day_descs else ""
+            lines.append(f"☀️ День: {t_day}°C, {desc_day}")
+        if night_temps:
+            t_night = round(sum(night_temps) / len(night_temps))
+            lines.append(f"🌙 Ночь: {t_night}°C")
+
     lines.append("")
     recs = get_recommendations(profile, weather, city)
     lines.extend(f"• {r}" for r in recs[:2])

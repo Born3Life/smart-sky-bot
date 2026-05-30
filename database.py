@@ -68,12 +68,28 @@ def init_db() -> None:
                 notifications_enabled INTEGER DEFAULT 1,
                 notify_time TEXT DEFAULT '08:00',
                 language TEXT DEFAULT 'ru',
+                workplace TEXT DEFAULT '',
+                has_children INTEGER DEFAULT 0,
                 FOREIGN KEY (referred_by) REFERENCES users(user_id)
             )
         """)
         c.execute("CREATE INDEX IF NOT EXISTS idx_users_city ON users(city)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_users_premium ON users(is_premium)")
         logger.info("database ready at %s", DB_PATH)
+    _migrate_add_columns()
+
+
+def _migrate_add_columns() -> None:
+    """Add missing columns for existing databases."""
+    for col, col_type in [
+        ("workplace", "TEXT DEFAULT ''"),
+        ("has_children", "INTEGER DEFAULT 0"),
+    ]:
+        try:
+            with tx() as c:
+                c.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
 
 def upsert_user(user_id: int, username: str | None, full_name: str) -> bool:
@@ -159,6 +175,21 @@ async def update_city_async(
 ) -> None:
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, update_city, user_id, city, lat, lon)
+
+
+def update_profile_fields(user_id: int, **fields: str | int) -> None:
+    """Update arbitrary user profile fields."""
+    if not fields:
+        return
+    pairs = ", ".join(f"{k} = ?" for k in fields)
+    vals = list(fields.values()) + [user_id]
+    with tx() as c:
+        c.execute(f"UPDATE users SET {pairs} WHERE user_id = ?", vals)
+
+
+async def update_profile_fields_async(user_id: int, **fields: str | int) -> None:
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, update_profile_fields, user_id, **fields)
 
 
 def _activate_trial(user_id: int) -> bool:
