@@ -18,7 +18,6 @@ from services.weather_forecast import (
     fmt_precipitation,
 )
 from services.weather_text import fmt_weather
-from services.tips import random_tip
 from services.web_search import weather_search
 from weather import fetch_by_city, fetch_by_coords, ts_to_time
 
@@ -155,21 +154,13 @@ async def handle_tomorrow(message: types.Message) -> None:
     forecast = fetch_forecast(city)
     if not forecast or len(forecast) < 2:
         if weather:
-            tip = random_tip(
-                temp=weather.temperature, desc=weather.description,
-                wind=weather.wind_speed, humidity=weather.humidity,
-                pressure=weather.pressure, uvi=weather.uvi,
-            )
-            msg = (
+            name = info["full_name"]
+            greeting = f"\n\n{name}, хорошего вечера! 🌙" if name else ""
+            await message.answer(
                 f"📅 <b>Завтра, {city}</b>\n\n"
                 f"🌡 Сейчас {weather.temperature}°C, {weather.description}\n"
-                f"💡 Точный прогноз завтра временно недоступен.\n\n"
-                f"{tip}"
+                f"💡 Прогноз на завтра временно недоступен. Загляни позже.{greeting}"
             )
-            name = info["full_name"]
-            if name:
-                msg += f"\n\n{name}, хорошего вечера! 🌙"
-            await message.answer(msg)
             await message.answer("Выбери действие:", reply_markup=main_keyboard())
             return
         await message.answer("❌ Нет данных на завтра.")
@@ -210,21 +201,13 @@ async def handle_forecast(message: types.Message) -> None:
     if forecast is None:
         weather = fetch_by_city(city)
         if weather:
-            tip = random_tip(
-                temp=weather.temperature, desc=weather.description,
-                wind=weather.wind_speed, humidity=weather.humidity,
-                pressure=weather.pressure, uvi=weather.uvi,
-            )
-            msg = (
+            name = info["full_name"]
+            greeting = f"\n\n{name}, планируй неделю! 📋" if name else ""
+            await sent.edit_text(
                 f"📅 <b>Прогноз на неделю, {city}</b>\n\n"
                 f"🌡 Сейчас {weather.temperature}°C, {weather.description}\n"
-                f"💡 Детальный прогноз временно недоступен.\n\n"
-                f"{tip}"
+                f"💡 Детальный прогноз временно недоступен.{greeting}"
             )
-            name = info["full_name"]
-            if name:
-                msg += f"\n\n{name}, планируй неделю! 📋"
-            await sent.edit_text(msg)
             await message.answer("Выбери действие:", reply_markup=main_keyboard())
             return
         await sent.edit_text("❌ Нет данных.")
@@ -363,17 +346,16 @@ async def handle_ai_tip(message: types.Message) -> None:
         output.append("")
         output.append(tip)
     else:
-        tip_text = random_tip(
-            temp=weather.temperature, desc=weather.description,
-            wind=weather.wind_speed, humidity=weather.humidity,
-            pressure=weather.pressure, uvi=weather.uvi,
-        )
-        children = "👶 Есть дети" if info["has_children"] else ""
-        work = f"💼 Работа: {info['workplace']}" if info['workplace'] else ""
-        profile = " | ".join(filter(None, [children, work]))
-        extra = f"\nУчтено: {profile}" if profile else ""
-        output.append("")
-        output.append(f"{tip_text}{extra}")
+        if precip:
+            output.append("")
+            output.append("⚠️ Смотри на осадки выше и планируй день.")
+        else:
+            children = "👶 Есть дети" if info["has_children"] else ""
+            work = f"💼 Работа: {info['workplace']}" if info['workplace'] else ""
+            profile = " | ".join(filter(None, [children, work]))
+            extra = f"\nУчтено: {profile}" if profile else ""
+            output.append("")
+            output.append(f"💡 {weather.description.capitalize()}, {weather.temperature}°C. Ветер {weather.wind_speed} м/с.{extra}")
 
     if name:
         output.append("")

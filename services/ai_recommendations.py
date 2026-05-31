@@ -14,6 +14,14 @@ logger = logging.getLogger(__name__)
 BASE = "https://openrouter.ai/api/v1/chat/completions"
 
 
+def _session() -> requests.Session:
+    """Session that ignores HTTP_PROXY — proxy only for Telegram, not for AI."""
+    s = requests.Session()
+    s.trust_env = False
+    s.verify = False
+    return s
+
+
 def ai_tip(
     has_children: int,
     workplace: str,
@@ -32,25 +40,27 @@ def ai_tip(
     dn_today = fmt_day_night(dn, "today")
     dn_tomorrow = fmt_day_night(dn, "tomorrow")
 
+    from services.weather_forecast import fetch_raw_forecast
+    from services.weather_forecast import fmt_precipitation
+    raw = fetch_raw_forecast(city or weather.city_name)
+    precip_warning = fmt_precipitation(raw) if raw else ""
+
     system_prompt = (
         "Ты — опытный метеоролог и персональный советник по погоде. "
-        "Твои рекомендации конкретные, практичные и уникальные — никаких шаблонов.\n\n"
+        "Твои рекомендации конкретные, практичные и уникальные.\n\n"
         "Правила:\n"
         "1. Всегда учитывай профиль пользователя (дети, работа).\n"
         "2. Если есть дети — дай совет про одежду ребёнку, прогулку или дорогу в сад/школу.\n"
-        "3. Если работа на улице — что надеть, взять с собой (дождевик, перчатки, вода).\n"
+        "3. Если работа на улице — что надеть, взять с собой.\n"
         "4. Если работа в помещении — что надеть по пути, стоит ли брать зонт.\n"
-        "5. Используй дневную и ночную температуру для контраста.\n"
-        "6. Упомяни ветер, осадки, UV-индекс, если это критично.\n"
-        "7. Пиши 3-5 предложений. Без воды и общих фраз. "
-        "Каждое предложение — полезный факт или actionable совет.\n"
-        "8. Если сегодня ожидается дождь, снег или гроза — предупреди, "
-        "укажи примерное время и дай совет (взять зонт, не выходить без нужды и т.д.).\n"
-        "9. В конце обязательно обратись к пользователю по имени и пожелай хорошего дня.\n\n"
+        "5. Если сегодня дождь/снег/гроза — обязательно укажи время, "
+        "когда ожидается, и дай конкретный совет.\n"
+        "6. Пиши 3-5 предложений. Без воды. Каждое предложение — полезный факт.\n"
+        "7. В конце обязательно обратись к пользователю по имени, пожелай хорошего дня.\n\n"
         "Формат:\n"
-        "— итог дня и конкретный совет.\n"
-        "— предупреждение о непогоде, если актуально.\n"
-        "— «{имя}, хорошего дня! ☀️» в конце."
+        "Конкретный совет исходя из погоды.\n"
+        "Если нужен зонт/тёплая одежда/крем — напиши.\n"
+        "Закончи: «{имя}, хорошего дня! ☀️»"
     )
 
     dn_info = ""
@@ -64,6 +74,8 @@ def ai_tip(
         f"Сейчас: {weather.temperature}°C, {weather.description}. "
         f"Ветер {weather.wind_speed} м/с, влажность {weather.humidity}%.{dn_info}"
     )
+    if precip_warning:
+        weather_text += f"\n\nОсадки сегодня:\n{precip_warning}"
 
     user_info = f"Пользователь: {kids_text}, работа: {workplace or 'не указана'}, имя: {user_name or 'не указано'}."
 
@@ -80,25 +92,27 @@ def ai_tip(
 
     messages.append({"role": "user", "content": f"{user_info}\n\n{weather_text}"})
 
+    sess = _session()
     for model in ["openai/gpt-4o-mini", "openrouter/free"]:
         for attempt in range(2):
             try:
-                resp = requests.post(
+                resp = sess.post(
                     BASE,
                     json={
                         "model": model,
                         "messages": messages,
-                        "max_tokens": 400,
+                        "max_tokens": 500,
                         "temperature": 0.8,
                     },
                     headers={"Authorization": f"Bearer {api_key}"},
-                    timeout=20,
+                    timeout=30,
                 )
                 data = resp.json()
                 if "error" not in data:
                     return data["choices"][0]["message"]["content"]
-                logger.warning("AI model %s error: %s", model, data.get("error"))
-            except Exception:
-                logger.exception("AI recommendation failed on %s (attempt %d)", model, attempt + 1)
+                err = data.get("error", {})
+                logger.warning("AI model %s error: %s", model, err.get("message") or err)
+            except Exception as e:
+                logger.warning("AI request failed on %s: %s", model, e)
 
     return None
