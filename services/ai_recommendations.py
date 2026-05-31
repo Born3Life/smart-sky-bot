@@ -123,7 +123,8 @@ def ai_tip(
     })
 
     sess = _session()
-    for model in ["openai/gpt-4o-mini", "openrouter/free"]:
+    models = ["openai/gpt-4o-mini", "openrouter/free", "deepseek/deepseek-v4-flash:free", "google/gemma-4-26b-a4b-it:free"]
+    for model in models:
         for attempt in range(2):
             try:
                 payload = {
@@ -136,15 +137,18 @@ def ai_tip(
                 resp = sess.post(
                     BASE,
                     json=payload,
-                    headers={"Authorization": f"Bearer {api_key}"},
+                    headers={"Authorization": f"Bearer {api_key}", "HTTP-Referer": "https://t.me/smart_sky_bot", "X-Title": "SmartSkyBot"},
                     timeout=30,
                 )
                 data = resp.json()
                 if "error" not in data:
-                    return data["choices"][0]["message"]["content"]
+                    content = data["choices"][0]["message"]["content"]
+                    logger.info("AI OK on %s (%d chars)", model, len(content))
+                    return content
                 err = data.get("error", {})
-                logger.warning("AI model %s error: %s", model, err.get("message") or err)
+                logger.warning("AI model %s error (attempt %d): %s", model, attempt + 1, err.get("message") or err)
             except Exception as e:
-                logger.warning("AI request failed on %s: %s", model, e)
+                logger.warning("AI request failed on %s (attempt %d): %s", model, attempt + 1, e)
 
+    logger.error("ALL AI models failed for user %s", user_id)
     return None
