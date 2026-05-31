@@ -80,26 +80,25 @@ def ai_tip(
 
     messages.append({"role": "user", "content": f"{user_info}\n\n{weather_text}"})
 
-    models = ["openrouter/free", "openai/gpt-4o-mini"]
-
-    for model in models:
-        try:
-            resp = requests.post(
-                BASE,
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "max_tokens": 400,
-                    "temperature": 0.8,
-                },
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=20,
-            )
-            data = resp.json()
-            if "error" not in data:
-                return data["choices"][0]["message"]["content"]
-            logger.warning("AI model %s error: %s", model, data.get("error"))
-        except Exception:
-            logger.exception("AI recommendation failed on %s", model)
+    for model in ["openai/gpt-4o-mini", "openrouter/free"]:
+        for attempt in range(2):
+            try:
+                resp = requests.post(
+                    BASE,
+                    json={
+                        "model": model,
+                        "messages": messages,
+                        "max_tokens": 400,
+                        "temperature": 0.8,
+                    },
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    timeout=20,
+                )
+                data = resp.json()
+                if "error" not in data:
+                    return data["choices"][0]["message"]["content"]
+                logger.warning("AI model %s error: %s", model, data.get("error"))
+            except Exception:
+                logger.exception("AI recommendation failed on %s (attempt %d)", model, attempt + 1)
 
     return None

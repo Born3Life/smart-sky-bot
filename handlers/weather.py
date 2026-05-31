@@ -308,25 +308,40 @@ async def handle_ai_tip(message: types.Message) -> None:
     )
     await increment_ai_usage_async(user.id)
 
-    dn = fetch_day_night(city)
-    dn_line = fmt_day_night(dn, "today")
+    precip = _precipitation_alert(city)
+    name = info["full_name"]
 
     output = [
         f"🤖 <b>AI-рекомендация</b>\n"
         f"🏙 {city} | {weather.description.capitalize()}, {weather.temperature}°C",
     ]
-    if dn_line:
+
+    if precip:
         output.append("")
-        output.append(dn_line)
+        output.append(f"⚠️ <b>Осадки сегодня:</b>\n{precip}")
+
     if tip:
         output.append("")
         output.append(tip)
-        if remaining <= 1:
-            output.append("")
-            output.append("💡 Бесплатных советов больше нет. 💎 /subscribe для Premium")
     else:
+        children = "👶 Есть дети" if info["has_children"] else ""
+        work = f"💼 Работа: {info['workplace']}" if info['workplace'] else ""
+        profile = " | ".join(filter(None, [children, work]))
+        extra = f"\n\nУчтено: {profile}" if profile else ""
         output.append("")
-        output.append("💡 По данным прогноза — планируй день с учётом погоды.")
+        output.append(
+            f"💡 Сегодня {weather.description}. "
+            f"Температура {weather.temperature}°C, "
+            f"ветер {weather.wind_speed} м/с.{extra}"
+        )
+
+    if name:
+        output.append("")
+        output.append(f"{name}, хорошего дня! ☀️")
+
+    if remaining <= 1:
+        output.append("")
+        output.append("💡 Бесплатных советов больше нет. 💎 /subscribe для Premium")
 
     await sent.edit_text("\n".join(output))
 
