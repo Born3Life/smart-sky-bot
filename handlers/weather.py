@@ -150,20 +150,21 @@ async def handle_tomorrow(message: types.Message) -> None:
         await message.answer("🏙 Сначала укажи город.")
         return
 
-    weather = fetch_by_city(city)
+    sent = await message.answer("📅 Получаю прогноз на завтра...")
     forecast = fetch_forecast(city)
     if not forecast or len(forecast) < 2:
+        weather = fetch_by_city(city)
         if weather:
             name = info["full_name"]
             greeting = f"\n\n{name}, хорошего вечера! 🌙" if name else ""
-            await message.answer(
+            await sent.edit_text(
                 f"📅 <b>Завтра, {city}</b>\n\n"
                 f"🌡 Сейчас {weather.temperature}°C, {weather.description}\n"
-                f"💡 Прогноз на завтра временно недоступен. Загляни позже.{greeting}"
+                f"💡 Прогноз на завтра временно недоступен.{greeting}"
             )
             await message.answer("Выбери действие:", reply_markup=main_keyboard())
             return
-        await message.answer("❌ Нет данных на завтра.")
+        await sent.edit_text("❌ Нет данных на завтра.")
         return
 
     f = forecast[1]
@@ -179,7 +180,7 @@ async def handle_tomorrow(message: types.Message) -> None:
     name = info["full_name"]
     if name:
         msg += f"\n\n{name}, готовься заранее! 😊"
-    await message.answer(msg)
+    await sent.edit_text(msg)
     await message.answer("Выбери действие:", reply_markup=main_keyboard())
 
 
@@ -346,16 +347,8 @@ async def handle_ai_tip(message: types.Message) -> None:
         output.append("")
         output.append(tip)
     else:
-        if precip:
-            output.append("")
-            output.append("⚠️ Смотри на осадки выше и планируй день.")
-        else:
-            children = "👶 Есть дети" if info["has_children"] else ""
-            work = f"💼 Работа: {info['workplace']}" if info['workplace'] else ""
-            profile = " | ".join(filter(None, [children, work]))
-            extra = f"\nУчтено: {profile}" if profile else ""
-            output.append("")
-            output.append(f"💡 {weather.description.capitalize()}, {weather.temperature}°C. Ветер {weather.wind_speed} м/с.{extra}")
+        output.append("")
+        output.append(f"💡 {weather.description.capitalize()}, {weather.temperature}°C. Ветер {weather.wind_speed} м/с.")
 
     if name:
         output.append("")

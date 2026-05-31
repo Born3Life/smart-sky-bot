@@ -7,7 +7,6 @@ from typing import Any
 import requests
 
 from config import openweather_api_key
-from services.gismeteo import fetch_forecast as gismeteo_forecast
 
 logger = logging.getLogger(__name__)
 
@@ -15,53 +14,48 @@ FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
 
 
 def fetch_forecast(city: str) -> list[dict[str, Any]] | None:
-    """Return 7-day forecast. Try OpenWeather first, fallback to Gismeteo."""
+    """Return 7-day forecast from OpenWeather."""
     api_key = openweather_api_key()
+    if not api_key:
+        return None
 
-    if api_key:
-        try:
-            resp = requests.get(
-                FORECAST_URL,
-                params={"q": city, "appid": api_key, "units": "metric", "lang": "ru"},
-                timeout=10,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except requests.RequestException:
-            logger.warning("OpenWeather forecast failed for %s", city)
-            data = None
+    sess = requests.Session()
+    sess.trust_env = False
+    sess.verify = False
 
-        if data:
-            daily: dict[str, dict[str, Any]] = {}
-            for entry in data.get("list", []):
-                dt = entry.get("dt_txt", "")
-                date = dt[:10]
-                if "12:00:00" in dt or date not in daily:
-                    daily[date] = {
-                        "date": date,
-                        "temp": round(entry["main"]["temp"]),
-                        "feels_like": round(entry["main"]["feels_like"]),
-                        "humidity": entry["main"]["humidity"],
-                        "wind": round(entry["wind"]["speed"], 1),
-                        "desc": entry["weather"][0]["description"],
-                        "icon": entry["weather"][0]["icon"],
-                        "pressure": entry["main"]["pressure"],
-                        "clouds": entry["clouds"]["all"],
-                        "rain": (entry.get("rain") or {}).get("3h", 0),
-                        "snow": (entry.get("snow") or {}).get("3h", 0),
-                    }
+    try:
+        resp = sess.get(
+            FORECAST_URL,
+            params={"q": city, "appid": api_key, "units": "metric", "lang": "ru"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.RequestException:
+        logger.warning("forecast fetch failed for %s", city)
+        return None
 
-            result = list(daily.values())[:7]
-            if result:
-                return result
+    daily: dict[str, dict[str, Any]] = {}
+    for entry in data.get("list", []):
+        dt = entry.get("dt_txt", "")
+        date = dt[:10]
+        if "12:00:00" in dt or date not in daily:
+            daily[date] = {
+                "date": date,
+                "temp": round(entry["main"]["temp"]),
+                "feels_like": round(entry["main"]["feels_like"]),
+                "humidity": entry["main"]["humidity"],
+                "wind": round(entry["wind"]["speed"], 1),
+                "desc": entry["weather"][0]["description"],
+                "icon": entry["weather"][0]["icon"],
+                "pressure": entry["main"]["pressure"],
+                "clouds": entry["clouds"]["all"],
+                "rain": (entry.get("rain") or {}).get("3h", 0),
+                "snow": (entry.get("snow") or {}).get("3h", 0),
+            }
 
-    logger.info("OpenWeather unavailable, trying Gismeteo for %s", city)
-    gist = gismeteo_forecast(city)
-    if gist:
-        return gist
-
-    logger.warning("all forecast sources failed for %s", city)
-    return None
+    result = list(daily.values())[:7]
+    return result if result else None
 
 
 def fetch_raw_forecast(city: str) -> list[dict[str, Any]] | None:
@@ -70,20 +64,24 @@ def fetch_raw_forecast(city: str) -> list[dict[str, Any]] | None:
     if not api_key:
         return None
 
+    sess = requests.Session()
+    sess.trust_env = False
+    sess.verify = False
+
     try:
-        resp = requests.get(
+        resp = sess.get(
             FORECAST_URL,
             params={"q": city, "appid": api_key, "units": "metric", "lang": "ru"},
-            timeout=10,
+            timeout=15,
         )
         resp.raise_for_status()
         data = resp.json()
     except requests.RequestException:
-        logger.exception("raw forecast fetch failed for %s", city)
+        logger.warning("raw forecast fetch failed for %s", city)
         return None
 
     entries: list[dict[str, Any]] = []
-    for entry in data.get("list", [])[:8]:  # next ~24h
+    for entry in data.get("list", [])[:8]:
         entries.append(
             {
                 "dt_txt": entry["dt_txt"],
@@ -103,16 +101,20 @@ def fetch_day_night(city: str) -> dict[str, Any] | None:
     if not api_key:
         return None
 
+    sess = requests.Session()
+    sess.trust_env = False
+    sess.verify = False
+
     try:
-        resp = requests.get(
+        resp = sess.get(
             FORECAST_URL,
             params={"q": city, "appid": api_key, "units": "metric", "lang": "ru"},
-            timeout=10,
+            timeout=15,
         )
         resp.raise_for_status()
         data = resp.json()
     except requests.RequestException:
-        logger.exception("day/night fetch failed for %s", city)
+        logger.warning("day/night fetch failed for %s", city)
         return None
 
     result: dict[str, Any] = {}
