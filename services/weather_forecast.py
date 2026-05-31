@@ -7,6 +7,7 @@ from typing import Any
 import requests
 
 from config import openweather_api_key
+from services.gismeteo import fetch_forecast as gismeteo_forecast
 
 logger = logging.getLogger(__name__)
 
@@ -14,46 +15,53 @@ FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
 
 
 def fetch_forecast(city: str) -> list[dict[str, Any]] | None:
-    """Return 7-day forecast (one entry per day at noon)."""
+    """Return 7-day forecast. Try OpenWeather first, fallback to Gismeteo."""
     api_key = openweather_api_key()
-    if not api_key:
-        return None
 
-    try:
-        resp = requests.get(
-            FORECAST_URL,
-            params={"q": city, "appid": api_key, "units": "metric", "lang": "ru"},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    except requests.RequestException:
-        logger.exception("forecast fetch failed for %s", city)
-        return None
+    if api_key:
+        try:
+            resp = requests.get(
+                FORECAST_URL,
+                params={"q": city, "appid": api_key, "units": "metric", "lang": "ru"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.RequestException:
+            logger.warning("OpenWeather forecast failed for %s", city)
+            data = None
 
-    daily: dict[str, dict[str, Any]] = {}
-    for entry in data.get("list", []):
-        dt = entry.get("dt_txt", "")
-        date = dt[:10]
-        if "12:00:00" in dt or date not in daily:
-            daily[date] = {
-                "date": date,
-                "temp": round(entry["main"]["temp"]),
-                "feels_like": round(entry["main"]["feels_like"]),
-                "humidity": entry["main"]["humidity"],
-                "wind": round(entry["wind"]["speed"], 1),
-                "desc": entry["weather"][0]["description"],
-                "icon": entry["weather"][0]["icon"],
-                "pressure": entry["main"]["pressure"],
-                "clouds": entry["clouds"]["all"],
-                "rain": (entry.get("rain") or {}).get("3h", 0),
-                "snow": (entry.get("snow") or {}).get("3h", 0),
-            }
+        if data:
+            daily: dict[str, dict[str, Any]] = {}
+            for entry in data.get("list", []):
+                dt = entry.get("dt_txt", "")
+                date = dt[:10]
+                if "12:00:00" in dt or date not in daily:
+                    daily[date] = {
+                        "date": date,
+                        "temp": round(entry["main"]["temp"]),
+                        "feels_like": round(entry["main"]["feels_like"]),
+                        "humidity": entry["main"]["humidity"],
+                        "wind": round(entry["wind"]["speed"], 1),
+                        "desc": entry["weather"][0]["description"],
+                        "icon": entry["weather"][0]["icon"],
+                        "pressure": entry["main"]["pressure"],
+                        "clouds": entry["clouds"]["all"],
+                        "rain": (entry.get("rain") or {}).get("3h", 0),
+                        "snow": (entry.get("snow") or {}).get("3h", 0),
+                    }
 
-    result = list(daily.values())[:7]
-    if not result:
-        return None
-    return result
+            result = list(daily.values())[:7]
+            if result:
+                return result
+
+    logger.info("OpenWeather unavailable, trying Gismeteo for %s", city)
+    gist = gismeteo_forecast(city)
+    if gist:
+        return gist
+
+    logger.warning("all forecast sources failed for %s", city)
+    return None
 
 
 def fetch_raw_forecast(city: str) -> list[dict[str, Any]] | None:
