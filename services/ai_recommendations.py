@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 import requests
 
@@ -15,7 +16,6 @@ BASE = "https://openrouter.ai/api/v1/chat/completions"
 
 
 def _session() -> requests.Session:
-    """Session that ignores HTTP_PROXY — proxy only for Telegram, not for AI."""
     s = requests.Session()
     s.trust_env = False
     s.verify = False
@@ -34,76 +34,108 @@ def ai_tip(
     if not api_key:
         return None
 
-    kids_text = "есть маленькие дети" if has_children else "нет детей"
-
     dn = fetch_day_night(city or weather.city_name)
     dn_today = fmt_day_night(dn, "today")
     dn_tomorrow = fmt_day_night(dn, "tomorrow")
 
-    from services.weather_forecast import fetch_raw_forecast
-    from services.weather_forecast import fmt_precipitation
+    from services.weather_forecast import fetch_raw_forecast, fmt_precipitation
     raw = fetch_raw_forecast(city or weather.city_name)
     precip_warning = fmt_precipitation(raw) if raw else ""
 
+    now = datetime.utcnow()
+    hour = now.hour
+    time_of_day = "утро" if 5 <= hour < 12 else "день" if 12 <= hour < 18 else "вечер" if 18 <= hour < 23 else "ночь"
+
     system_prompt = (
-        "Ты — опытный метеоролог и персональный советник по погоде. "
-        "Твои рекомендации конкретные, практичные и уникальные.\n\n"
+        "Ты — живой, умный собеседник и эксперт по погоде. "
+        "Твоя задача — не просто выдать факты, а подумать, проанализировать и дать "
+        "человечный, полезный совет.\n\n"
+        "Как ты думаешь:\n"
+        "1. Посмотри на погоду: температура, осадки, ветер, влажность, давление.\n"
+        "2. Посмотри на пользователя: есть ли дети, где работает, как зовут.\n"
+        "3. Посмотри на историю диалога: о чём уже говорили.\n"
+        "4. Сделай вывод: что важно именно сейчас для этого человека.\n"
+        "5. Дай совет — конкретный, тёплый, человечный.\n\n"
         "Правила:\n"
-        "1. Всегда учитывай профиль пользователя (дети, работа).\n"
-        "2. Если есть дети — дай совет про одежду ребёнку, прогулку или дорогу в сад/школу.\n"
-        "3. Если работа на улице — что надеть, взять с собой.\n"
-        "4. Если работа в помещении — что надеть по пути, стоит ли брать зонт.\n"
-        "5. Если сегодня дождь/снег/гроза — обязательно укажи время, "
-        "когда ожидается, и дай конкретный совет.\n"
-        "6. Пиши 3-5 предложений. Без воды. Каждое предложение — полезный факт.\n"
-        "7. В конце обязательно обратись к пользователю по имени, пожелай хорошего дня.\n\n"
-        "Формат:\n"
-        "Конкретный совет исходя из погоды.\n"
-        "Если нужен зонт/тёплая одежда/крем — напиши.\n"
-        "Закончи: «{имя}, хорошего дня! ☀️»"
+        "- Если дети — подумай про их одежду, прогулку, садик/школу.\n"
+        "- Если работа на улице — что надеть, взять с собой.\n"
+        "- Если работа в офисе — как одеться по пути, нужен ли зонт.\n"
+        "- Если дождь/снег/гроза — предупреди, укажи время, посоветуй что делать.\n"
+        "- Пиши как живой человек: 3-5 предложений, тепло, по делу.\n"
+        "- Обращайся к человеку по имени естественно, вплетай в текст, "
+        "не обязательно в конце. Разные фразы (не шаблон).\n"
+        "- Не будь роботом. Будь другом, который заботится."
     )
 
     dn_info = ""
     if dn_today:
-        dn_info += f"\nСегодня: {dn_today}"
+        dn_info += f"\n- Днём: {dn_today}"
     if dn_tomorrow:
-        dn_info += f"\nЗавтра: {dn_tomorrow}"
+        dn_info += f"\n- Завтра: {dn_tomorrow}"
 
-    weather_text = (
-        f"Город: {city or weather.city_name}. "
-        f"Сейчас: {weather.temperature}°C, {weather.description}. "
-        f"Ветер {weather.wind_speed} м/с, влажность {weather.humidity}%.{dn_info}"
+    weather_report = (
+        f"📍 Город: {city or weather.city_name}\n"
+        f"🕐 {time_of_day}\n"
+        f"🌡 Сейчас: {weather.temperature}°C, ощущается как {weather.feels_like}°C\n"
+        f"☁️ {weather.description}\n"
+        f"💨 Ветер: {weather.wind_speed} м/с"
     )
+    if weather.wind_gust is not None:
+        weather_report += f", порывы до {weather.wind_gust} м/с"
+    weather_report += (
+        f"\n💧 Влажность: {weather.humidity}%\n"
+        f"📊 Давление: {weather.pressure} гПа"
+    )
+    if weather.uvi is not None:
+        weather_report += f"\n☀️ UV-индекс: {weather.uvi}"
+    if dn_info:
+        weather_report += dn_info
     if precip_warning:
-        weather_text += f"\n\nОсадки сегодня:\n{precip_warning}"
+        weather_report += f"\n\n⚠️ Осадки сегодня:\n{precip_warning}"
 
-    user_info = f"Пользователь: {kids_text}, работа: {workplace or 'не указана'}, имя: {user_name or 'не указано'}."
+    kids_info = "👶 есть маленькие дети" if has_children else "👤 без детей"
+    work_info = f"💼 работа: {workplace}" if workplace else "💼 работа не указана"
+    user_profile = f"{kids_info}, {work_info}, имя: {user_name or '—'}."
 
     messages = [{"role": "system", "content": system_prompt}]
 
     if user_id:
         history = get_history(user_id, limit=300)
         if history:
-            context = "\n".join(f"{h['role']}: {h['text']}" for h in history[-10:])
+            recent = history[-6:]
+            formatted = "\n".join(
+                f"{'Пользователь' if h['role'] == 'user' else 'Бот'}: {h['text']}"
+                for h in recent
+            )
             messages.append({
                 "role": "system",
-                "content": f"Недавний диалог пользователя:\n{context}",
+                "content": f"Недавний разговор с пользователем:\n{formatted}",
             })
 
-    messages.append({"role": "user", "content": f"{user_info}\n\n{weather_text}"})
+    messages.append({
+        "role": "user",
+        "content": (
+            f"Профиль: {user_profile}\n\n"
+            f"Погода:\n{weather_report}\n\n"
+            "Посмотри на всё это и дай человеку тёплый, умный совет "
+            "на день. Что важно учесть? Что посоветуешь?"
+        ),
+    })
 
     sess = _session()
     for model in ["openai/gpt-4o-mini", "openrouter/free"]:
         for attempt in range(2):
             try:
+                payload = {
+                    "model": model,
+                    "messages": messages,
+                    "max_tokens": 600,
+                    "temperature": 0.9,
+                    "top_p": 0.95,
+                }
                 resp = sess.post(
                     BASE,
-                    json={
-                        "model": model,
-                        "messages": messages,
-                        "max_tokens": 500,
-                        "temperature": 0.8,
-                    },
+                    json=payload,
                     headers={"Authorization": f"Bearer {api_key}"},
                     timeout=30,
                 )
