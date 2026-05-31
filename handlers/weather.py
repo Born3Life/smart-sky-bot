@@ -12,8 +12,10 @@ from services.recommendation import fmt_windows
 from services.weather_forecast import (
     fetch_day_night,
     fetch_forecast,
+    fetch_raw_forecast,
     fmt_day_night,
     fmt_forecast,
+    fmt_precipitation,
 )
 from services.weather_text import fmt_weather
 from services.web_search import weather_search
@@ -29,48 +31,21 @@ async def _get_user_info(
 ) -> dict:
     info = await get_user_async(user_id)
     if not info:
-        return {"city": None, "has_children": 0, "workplace": ""}
+        return {"city": None, "has_children": 0, "workplace": "", "full_name": ""}
     return {
         "city": info.get("city"),
         "has_children": info.get("has_children", 0),
         "workplace": info.get("workplace", ""),
+        "full_name": info.get("full_name") or "",
     }
 
 
-async def _weather_or_prompt(
-    message: types.Message,
-    sent: types.Message,
-    city: str,
-    has_children: int = 0,
-    workplace: str = "",
-) -> None:
-    weather = fetch_by_city(city)
-    if weather is None:
-        await sent.edit_text(
-            f"❌ Не удалось получить погоду для «{city}».\n"
-            "Проверь название города или попробуй позже.",
-        )
-        return
-
-    weather_block = fmt_weather(weather)
-    windows = fmt_windows(city) if city else None
-
-    output = [weather_block, "", "📋 <b>Прогноз на сегодня:</b>"]
-    if windows:
-        output.append(windows)
-    else:
-        output.append(f"🌡 {weather.temperature}°C, {weather.description.capitalize()}")
-
-    tip = ai_tip(has_children, workplace, weather, city)
-    if tip:
-        output.append("")
-        output.append(f"🤖 <b>AI-рекомендация:</b>\n{tip}")
-    elif windows:
-        output.append("")
-        output.append("💡 По данным прогноза — планируй день с учётом окон.")
-
-    await sent.edit_text("\n".join(output))
-    await message.answer("Выбери действие:", reply_markup=main_keyboard())
+def _precipitation_alert(city: str) -> str | None:
+    raw = fetch_raw_forecast(city)
+    if not raw:
+        return None
+    alert = fmt_precipitation(raw)
+    return alert if alert and len(alert) > 0 else None
 
 
 @router.message(F.text == "🌤 Сейчас", StateFilter(None))
@@ -87,7 +62,31 @@ async def handle_weather_now(message: types.Message) -> None:
         return
 
     sent = await message.answer("🔍 Получаю данные о погоде...")
-    await _weather_or_prompt(message, sent, city, info["has_children"], info["workplace"])
+    weather = fetch_by_city(city)
+    if weather is None:
+        await sent.edit_text(f"❌ Не удалось получить погоду для «{city}».")
+        return
+
+    weather_block = fmt_weather(weather)
+    windows = fmt_windows(city) if city else None
+    precip = _precipitation_alert(city)
+
+    output = [weather_block]
+    if precip:
+        output.append("")
+        output.append(f"⚠️ <b>Осадки сегодня:</b>\n{precip}")
+    elif windows:
+        output.append("")
+        output.append("📋 <b>Прогноз на сегодня:</b>")
+        output.append(windows)
+
+    name = info["full_name"]
+    if name:
+        output.append("")
+        output.append(f"{name}, хорошего дня! ☀️")
+
+    await sent.edit_text("\n".join(output))
+    await message.answer("Выбери действие:", reply_markup=main_keyboard())
 
 
 @router.message(F.text == "📅 Сегодня", StateFilter(None))
@@ -109,6 +108,7 @@ async def handle_today_mini(message: types.Message) -> None:
 
     dn = fetch_day_night(city)
     dn_line = fmt_day_night(dn, "today")
+    precip = _precipitation_alert(city)
 
     lines = [
         f"📅 <b>Сегодня, {city}</b>",
@@ -125,11 +125,14 @@ async def handle_today_mini(message: types.Message) -> None:
         lines.append(f"🌅 Рассвет: {ts_to_time(weather.sunrise)}")
     if weather.sunset:
         lines.append(f"🌇 Закат: {ts_to_time(weather.sunset)}")
-
-    windows = fmt_windows(city)
-    if windows:
+    if precip:
         lines.append("")
-        lines.append(windows)
+        lines.append(f"⚠️ <b>Осадки сегодня:</b>\n{precip}")
+
+    name = info["full_name"]
+    if name:
+        lines.append("")
+        lines.append(f"{name}, хорошего дня! ☀️")
 
     await message.answer("\n".join(lines))
     await message.answer("Выбери действие:", reply_markup=main_keyboard())
@@ -155,13 +158,17 @@ async def handle_tomorrow(message: types.Message) -> None:
     f = forecast[1]
     dn = fetch_day_night(city)
     dn_line = fmt_day_night(dn, "tomorrow")
-    await message.answer(
+    msg = (
         f"📅 <b>Завтра, {f['date']}</b>\n"
         f"🌡 {f['temp']}°C (ощущается {f['feels_like']}°C)\n"
         f"💧 {f['humidity']}%  💨 {f['wind']} м/с\n"
         f"📝 {f['desc'].capitalize()}\n"
         f"{dn_line}"
     )
+    name = info["full_name"]
+    if name:
+        msg += f"\n\n{name}, готовься заранее! 😊"
+    await message.answer(msg)
     await message.answer("Выбери действие:", reply_markup=main_keyboard())
 
 
@@ -184,7 +191,11 @@ async def handle_forecast(message: types.Message) -> None:
         await sent.edit_text("❌ Нет данных.")
         return
 
-    await sent.edit_text(fmt_forecast(forecast, city))
+    msg = fmt_forecast(forecast, city)
+    name = info["full_name"]
+    if name:
+        msg += f"\n\n{name}, планируй неделю заранее! 📋"
+    await sent.edit_text(msg)
     await message.answer("Выбери действие:", reply_markup=main_keyboard())
 
 
@@ -194,7 +205,8 @@ async def handle_sun(message: types.Message) -> None:
     if user is None:
         return
 
-    city, _ = await _get_city_profile(user.id)
+    info = await _get_user_info(user.id)
+    city = info["city"]
     if not city:
         await message.answer("🏙 Сначала укажи город.")
         return
@@ -204,15 +216,22 @@ async def handle_sun(message: types.Message) -> None:
         await message.answer("❌ Нет данных.")
         return
 
+    name = info["full_name"]
     day_len: str | None = None
     if weather.sunset and weather.sunrise:
-        day_len = f"{weather.sunset - weather.sunrise} сек"
-    await message.answer(
+        secs = weather.sunset - weather.sunrise
+        hours = secs // 3600
+        mins = (secs % 3600) // 60
+        day_len = f"{hours}ч {mins}мин"
+    msg = (
         f"🌅 <b>{city}</b>\n\n"
         f"🌅 Рассвет: {ts_to_time(weather.sunrise)}\n"
         f"🌇 Закат: {ts_to_time(weather.sunset)}\n"
         f"☀️ Световой день: {day_len or '—'}"
     )
+    if name:
+        msg += f"\n\n{name}, хорошего дня! ☀️"
+    await message.answer(msg)
 
 
 @router.message(F.text == "☀️ UV-индекс", StateFilter(None))
@@ -244,12 +263,16 @@ async def handle_uv(message: types.Message) -> None:
     uv_advice = (
         "🕶 Нужны солнцезащитные очки и крем" if weather.uvi > 3 else "✅ UV-безопасно"
     )
-    await message.answer(
+    name = info["full_name"]
+    msg = (
         f"☀️ <b>UV-индекс в {city}</b>\n\n"
         f"Значение: {weather.uvi}\n"
         f"Риск: {risk}\n\n"
         f"{uv_advice}"
     )
+    if name:
+        msg += f"\n\n{name}, береги кожу! 🧴"
+    await message.answer(msg)
 
 
 @router.message(F.text == "🤖 AI Совет", StateFilter(None))
@@ -279,12 +302,10 @@ async def handle_ai_tip(message: types.Message) -> None:
         return
 
     sent = await message.answer("🤖 Думаю...")
-    windows = fmt_windows(city)
-    if user is not None:
-        tip = ai_tip(info["has_children"], info["workplace"], weather, city, user_id=user.id)
-    else:
-        tip = ai_tip(info["has_children"], info["workplace"], weather, city)
-
+    tip = ai_tip(
+        info["has_children"], info["workplace"], weather, city,
+        user_id=user.id, user_name=info["full_name"],
+    )
     await increment_ai_usage_async(user.id)
 
     dn = fetch_day_night(city)
@@ -297,18 +318,15 @@ async def handle_ai_tip(message: types.Message) -> None:
     if dn_line:
         output.append("")
         output.append(dn_line)
-    if windows:
-        output.append("")
-        output.append(windows)
     if tip:
         output.append("")
         output.append(tip)
         if remaining <= 1:
             output.append("")
-            output.append("💡 Бесплатных советов больше нет. <a href='/subscribe'>Оформи Premium</a>")
-    elif windows:
+            output.append("💡 Бесплатных советов больше нет. 💎 /subscribe для Premium")
+    else:
         output.append("")
-        output.append("💡 По данным прогноза — планируй день с учётом окон.")
+        output.append("💡 По данным прогноза — планируй день с учётом погоды.")
 
     await sent.edit_text("\n".join(output))
 
@@ -366,6 +384,7 @@ async def handle_location(message: types.Message) -> None:
 
     info = await _get_user_info(user.id)
     city = weather.city_name if weather else info["city"]
+    name = info["full_name"]
 
     weather_block = fmt_weather(weather)
     windows = fmt_windows(city) if city else None
@@ -373,6 +392,9 @@ async def handle_location(message: types.Message) -> None:
     if windows:
         output.append("")
         output.append(windows)
+    if name:
+        output.append("")
+        output.append(f"{name}, хорошего дня! ☀️")
 
     await sent.edit_text("\n".join(output))
     await message.answer("Выбери действие:", reply_markup=main_keyboard())

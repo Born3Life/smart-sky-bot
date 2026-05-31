@@ -16,11 +16,38 @@ BASE_URL = "https://api.openweathermap.org/data/2.5/weather"
 UV_URL = "https://api.openweathermap.org/data/2.5/uvi"
 
 
+GEO_URL = "https://api.openweathermap.org/geo/1.0/direct"
+
+
+def _ow_geocode(city: str) -> tuple[float, float] | None:
+    api_key = openweather_api_key()
+    if not api_key:
+        return None
+    try:
+        resp = requests.get(
+            GEO_URL,
+            params={"q": city, "limit": 1, "appid": api_key},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data:
+            return data[0]["lat"], data[0]["lon"]
+    except requests.RequestException:
+        pass
+    return None
+
+
 def fetch_by_city(city: str) -> WeatherData | None:
     """Try gismeteo first, fall back to OpenWeather."""
     weather = gismeteo_fetch(city)
     if weather is not None:
         logger.info("gismeteo OK for %s", city)
+        if weather.uvi is None:
+            coords = _ow_geocode(city)
+            if coords:
+                uv = _ow_fetch_uvi(*coords)
+                weather.uvi = uv
         return weather
 
     logger.info("gismeteo failed, fallback to OpenWeather for %s", city)

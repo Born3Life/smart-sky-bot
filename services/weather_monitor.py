@@ -160,7 +160,7 @@ async def morning_briefing(bot: Bot) -> None:
     target_offset = 5  # 5 UTC = 8 MSK
 
     rows = conn().execute(
-        "SELECT user_id, city FROM users WHERE city IS NOT NULL AND is_active = 1 AND notifications_enabled = 1",
+        "SELECT user_id, city FROM users WHERE city IS NOT NULL AND is_active = 1 AND is_premium = 1 AND notifications_enabled = 1",
     ).fetchall()
 
     for row in rows:
@@ -205,7 +205,7 @@ async def check_and_notify(bot: Bot) -> None:
     rows = (
         conn()
         .execute(
-            "SELECT user_id, city FROM users WHERE city IS NOT NULL AND is_active = 1",
+            "SELECT user_id, city FROM users WHERE city IS NOT NULL AND is_active = 1 AND is_premium = 1",
         )
         .fetchall()
     )

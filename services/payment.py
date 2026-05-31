@@ -15,7 +15,7 @@ def stars_invoice() -> tuple[str, str, list[LabeledPrice]]:
         "🌟 Уведомления\n"
         "🌟 UV-индекс и рассвет"
     )
-    prices = [LabeledPrice(label="Premium 1мес", amount=STARS_PRICE * 100)]
+    prices = [LabeledPrice(label="Premium 1мес", amount=STARS_PRICE)]
     return title, description, prices
 
 

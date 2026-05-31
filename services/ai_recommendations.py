@@ -20,6 +20,7 @@ def ai_tip(
     weather: WeatherData,
     city: str | None = None,
     user_id: int | None = None,
+    user_name: str = "",
 ) -> str | None:
     api_key = openrouter_api_key()
     if not api_key:
@@ -43,10 +44,13 @@ def ai_tip(
         "6. Упомяни ветер, осадки, UV-индекс, если это критично.\n"
         "7. Пиши 3-5 предложений. Без воды и общих фраз. "
         "Каждое предложение — полезный факт или actionable совет.\n"
-        "8. Если в истории сообщений есть контекст (пользователь спрашивал про что-то) — учти его.\n\n"
+        "8. Если сегодня ожидается дождь, снег или гроза — предупреди, "
+        "укажи примерное время и дай совет (взять зонт, не выходить без нужды и т.д.).\n"
+        "9. В конце обязательно обратись к пользователю по имени и пожелай хорошего дня.\n\n"
         "Формат:\n"
-        "— две строки: итог дня и конкретный совет.\n"
-        "— закончи вопросом к пользователю (например, «Гулять сегодня будете?»)."
+        "— итог дня и конкретный совет.\n"
+        "— предупреждение о непогоде, если актуально.\n"
+        "— «{имя}, хорошего дня! ☀️» в конце."
     )
 
     dn_info = ""
@@ -61,7 +65,7 @@ def ai_tip(
         f"Ветер {weather.wind_speed} м/с, влажность {weather.humidity}%.{dn_info}"
     )
 
-    user_info = f"Пользователь: {kids_text}, работа: {workplace or 'не указана'}."
+    user_info = f"Пользователь: {kids_text}, работа: {workplace or 'не указана'}, имя: {user_name or 'не указано'}."
 
     messages = [{"role": "system", "content": system_prompt}]
 
@@ -76,20 +80,26 @@ def ai_tip(
 
     messages.append({"role": "user", "content": f"{user_info}\n\n{weather_text}"})
 
-    try:
-        resp = requests.post(
-            BASE,
-            json={
-                "model": "openai/gpt-4o-mini",
-                "messages": messages,
-                "max_tokens": 400,
-                "temperature": 0.8,
-            },
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=20,
-        )
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
-    except Exception:
-        logger.exception("AI recommendation failed")
-        return None
+    models = ["openrouter/free", "openai/gpt-4o-mini"]
+
+    for model in models:
+        try:
+            resp = requests.post(
+                BASE,
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "max_tokens": 400,
+                    "temperature": 0.8,
+                },
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=20,
+            )
+            data = resp.json()
+            if "error" not in data:
+                return data["choices"][0]["message"]["content"]
+            logger.warning("AI model %s error: %s", model, data.get("error"))
+        except Exception:
+            logger.exception("AI recommendation failed on %s", model)
+
+    return None
