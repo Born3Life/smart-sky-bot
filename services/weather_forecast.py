@@ -29,10 +29,11 @@ def fetch_forecast(city: str) -> list[dict[str, Any]] | None:
             params={"q": city, "appid": api_key, "units": "metric", "lang": "ru"},
             timeout=15,
         )
+        logger.info("forecast HTTP %d for %s", resp.status_code, city)
         resp.raise_for_status()
         data = resp.json()
-    except requests.RequestException:
-        logger.warning("forecast fetch failed for %s", city)
+    except requests.RequestException as e:
+        logger.warning("forecast fetch failed for %s: %s", city, e)
         return None
 
     daily: dict[str, dict[str, Any]] = {}
@@ -74,10 +75,11 @@ def fetch_raw_forecast(city: str) -> list[dict[str, Any]] | None:
             params={"q": city, "appid": api_key, "units": "metric", "lang": "ru"},
             timeout=15,
         )
+        logger.info("raw forecast HTTP %d for %s", resp.status_code, city)
         resp.raise_for_status()
         data = resp.json()
-    except requests.RequestException:
-        logger.warning("raw forecast fetch failed for %s", city)
+    except requests.RequestException as e:
+        logger.warning("raw forecast fetch failed for %s: %s", city, e)
         return None
 
     entries: list[dict[str, Any]] = []
@@ -111,10 +113,11 @@ def fetch_day_night(city: str) -> dict[str, Any] | None:
             params={"q": city, "appid": api_key, "units": "metric", "lang": "ru"},
             timeout=15,
         )
+        logger.info("day/night HTTP %d for %s", resp.status_code, city)
         resp.raise_for_status()
         data = resp.json()
-    except requests.RequestException:
-        logger.warning("day/night fetch failed for %s", city)
+    except requests.RequestException as e:
+        logger.warning("day/night fetch failed for %s: %s", city, e)
         return None
 
     result: dict[str, Any] = {}
